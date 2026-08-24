@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# build output
+out/
+dist/
+release/
+
+# build cache / logs
+*.tsbuildinfo
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
