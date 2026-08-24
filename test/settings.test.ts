@@ -8,7 +8,7 @@ import { loadSettings, saveSettings } from '../src/main/settings'
 const DEFAULTS = {
   deviceId: 'default-id',
   deviceName: 'default-name',
-  sharedFolder: '/default/shared',
+  sharedFolders: ['/default/shared'],
   downloadFolder: '/default/downloads'
 }
 
@@ -22,7 +22,7 @@ test('保存した内容をそのまま読み込める', () => {
   const settings = {
     deviceId: 'id-1',
     deviceName: 'My PC',
-    sharedFolder: 'C:/Users/me/LanDrop共有',
+    sharedFolders: ['C:/Users/me/LanDrop共有', 'D:/Videos共有'],
     downloadFolder: 'C:/Users/me/Downloads'
   }
   saveSettings(filePath, settings)
@@ -43,8 +43,15 @@ test('一部フィールドが欠けている場合は該当フィールドの�
   assert.deepEqual(loadSettings(filePath, DEFAULTS), {
     deviceId: DEFAULTS.deviceId,
     deviceName: 'Only Name',
-    sharedFolder: DEFAULTS.sharedFolder,
+    sharedFolders: DEFAULTS.sharedFolders,
     downloadFolder: DEFAULTS.downloadFolder
   })
+  fs.rmSync(filePath, { force: true })
+})
+
+test('sharedFoldersが空配列の場合はそのまま(何も共有しない状態として)尊重される', () => {
+  const filePath = path.join(os.tmpdir(), `landrop-settings-empty-array-${Date.now()}.json`)
+  fs.writeFileSync(filePath, JSON.stringify({ sharedFolders: [] }), 'utf-8')
+  assert.deepEqual(loadSettings(filePath, DEFAULTS).sharedFolders, [])
   fs.rmSync(filePath, { force: true })
 })

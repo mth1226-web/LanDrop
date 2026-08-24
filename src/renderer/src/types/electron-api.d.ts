@@ -7,8 +7,10 @@ export interface ElectronAPI {
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: { deviceName: string }) => Promise<AppSettings>
   chooseSharedFolder: () => Promise<AppSettings | null>
+  addSharedFolders: (paths: string[]) => Promise<AppSettings>
+  removeSharedFolder: (folderPath: string) => Promise<AppSettings>
   chooseDownloadFolder: () => Promise<AppSettings | null>
-  openSharedFolder: () => Promise<void>
+  openFolder: (folderPath: string) => Promise<void>
   revealLocalFile: (relPath: string) => Promise<void>
 
   browseFolder: (peerDeviceId: string, relPath: string) => Promise<BrowseEntry[]>

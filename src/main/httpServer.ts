@@ -4,7 +4,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import { listDirectory, createFolder, renameEntry, resolveSafePath, isValidEntryName } from './sharedFs'
+import { browseShared, resolveSharedEntry, resolveSafePath, createFolder, renameEntry, isValidEntryName } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import type { BrowseEntry } from '../shared/types'
 
@@ -24,11 +24,11 @@ export declare interface HttpServer {
 
 export class HttpServer extends EventEmitter {
   private readonly server: http.Server
-  private readonly getSharedFolder: () => string
+  private readonly getSharedFolders: () => string[]
 
-  constructor(options: { getSharedFolder: () => string }) {
+  constructor(options: { getSharedFolders: () => string[] }) {
     super()
-    this.getSharedFolder = options.getSharedFolder
+    this.getSharedFolders = options.getSharedFolders
     this.server = http.createServer((req, res) => this.handleRequest(req, res))
   }
 
@@ -101,7 +101,7 @@ export class HttpServer extends EventEmitter {
     const relPath = url.searchParams.get('path') ?? ''
     let entries: BrowseEntry[]
     try {
-      entries = listDirectory(this.getSharedFolder(), relPath)
+      entries = browseShared(this.getSharedFolders(), relPath)
     } catch {
       this.sendJson(res, 400, { ok: false, error: 'invalid-path' })
       return
@@ -111,7 +111,8 @@ export class HttpServer extends EventEmitter {
 
   private handleDownload(res: http.ServerResponse, url: URL): void {
     const relPath = url.searchParams.get('path') ?? ''
-    const target = resolveSafePath(this.getSharedFolder(), relPath)
+    const resolved = resolveSharedEntry(this.getSharedFolders(), relPath)
+    const target = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
     if (!target || !fs.existsSync(target) || fs.statSync(target).isDirectory()) {
       res.writeHead(404)
       res.end()
@@ -129,7 +130,8 @@ export class HttpServer extends EventEmitter {
   private async handleUpload(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
     const relPath = url.searchParams.get('path') ?? ''
     const name = url.searchParams.get('name') ?? ''
-    const dir = resolveSafePath(this.getSharedFolder(), relPath)
+    const resolved = resolveSharedEntry(this.getSharedFolders(), relPath)
+    const dir = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
     if (!dir || !fs.existsSync(dir) || !name || !isValidEntryName(name)) {
       this.sendJson(res, 400, { ok: false, error: 'invalid-request' })
       return
@@ -168,7 +170,9 @@ export class HttpServer extends EventEmitter {
     let body: { path: string; name: string }
     try {
       body = await this.readJsonBody(req, JSON_BODY_LIMIT_BYTES)
-      createFolder(this.getSharedFolder(), body.path, body.name)
+      const resolved = resolveSharedEntry(this.getSharedFolders(), body.path)
+      if (!resolved) throw new Error('invalid path')
+      createFolder(resolved.rootPath, resolved.innerRelPath, body.name)
     } catch (err) {
       this.sendJson(res, 400, { ok: false, error: String(err) })
       return
@@ -180,7 +184,9 @@ export class HttpServer extends EventEmitter {
     let body: { path: string; oldName: string; newName: string }
     try {
       body = await this.readJsonBody(req, JSON_BODY_LIMIT_BYTES)
-      renameEntry(this.getSharedFolder(), body.path, body.oldName, body.newName)
+      const resolved = resolveSharedEntry(this.getSharedFolders(), body.path)
+      if (!resolved) throw new Error('invalid path')
+      renameEntry(resolved.rootPath, resolved.innerRelPath, body.oldName, body.newName)
     } catch (err) {
       this.sendJson(res, 400, { ok: false, error: String(err) })
       return

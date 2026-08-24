@@ -48,6 +48,6 @@ export interface TransferActivity {
 export interface AppSettings {
   deviceId: string
   deviceName: string
-  sharedFolder: string
+  sharedFolders: string[]
   downloadFolder: string
 }

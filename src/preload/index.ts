@@ -8,8 +8,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('get-settings'),
   setSettings: (settings: { deviceName: string }): Promise<AppSettings> => ipcRenderer.invoke('set-settings', settings),
   chooseSharedFolder: (): Promise<AppSettings | null> => ipcRenderer.invoke('choose-shared-folder'),
+  addSharedFolders: (paths: string[]): Promise<AppSettings> => ipcRenderer.invoke('add-shared-folders', paths),
+  removeSharedFolder: (folderPath: string): Promise<AppSettings> => ipcRenderer.invoke('remove-shared-folder', folderPath),
   chooseDownloadFolder: (): Promise<AppSettings | null> => ipcRenderer.invoke('choose-download-folder'),
-  openSharedFolder: (): Promise<void> => ipcRenderer.invoke('open-shared-folder'),
+  openFolder: (folderPath: string): Promise<void> => ipcRenderer.invoke('open-folder', folderPath),
   revealLocalFile: (relPath: string): Promise<void> => ipcRenderer.invoke('reveal-local-file', { relPath }),
 
   browseFolder: (peerDeviceId: string, relPath: string): Promise<BrowseEntry[]> =>

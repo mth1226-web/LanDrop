@@ -107,6 +107,22 @@ export default function App(): JSX.Element {
     }
   }
 
+  async function handleAddSharedFolders(paths: string[]): Promise<void> {
+    const updated = await window.electronAPI.addSharedFolders(paths)
+    setSettings(updated)
+    reloadEntries()
+  }
+
+  async function handleRemoveSharedFolder(folderPath: string): Promise<void> {
+    const updated = await window.electronAPI.removeSharedFolder(folderPath)
+    setSettings(updated)
+    reloadEntries()
+  }
+
+  function handleOpenFolder(folderPath: string): void {
+    void window.electronAPI.openFolder(folderPath)
+  }
+
   async function handleChooseDownloadFolder(): Promise<void> {
     const updated = await window.electronAPI.chooseDownloadFolder()
     if (updated) setSettings(updated)
@@ -153,7 +169,10 @@ export default function App(): JSX.Element {
         <SettingsDialog
           settings={settings}
           onSaveDeviceName={handleSaveDeviceName}
+          onAddSharedFolders={handleAddSharedFolders}
           onChooseSharedFolder={handleChooseSharedFolder}
+          onRemoveSharedFolder={handleRemoveSharedFolder}
+          onOpenFolder={handleOpenFolder}
           onChooseDownloadFolder={handleChooseDownloadFolder}
           onClose={() => setShowSettings(false)}
         />

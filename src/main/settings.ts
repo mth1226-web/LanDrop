@@ -10,8 +10,10 @@ export function loadSettings(settingsFilePath: string, defaults: AppSettings): A
     return {
       deviceId: typeof parsed.deviceId === 'string' && parsed.deviceId ? parsed.deviceId : defaults.deviceId,
       deviceName: typeof parsed.deviceName === 'string' && parsed.deviceName ? parsed.deviceName : defaults.deviceName,
-      sharedFolder:
-        typeof parsed.sharedFolder === 'string' && parsed.sharedFolder ? parsed.sharedFolder : defaults.sharedFolder,
+      sharedFolders:
+        Array.isArray(parsed.sharedFolders) && parsed.sharedFolders.every((f) => typeof f === 'string')
+          ? parsed.sharedFolders
+          : defaults.sharedFolders,
       downloadFolder:
         typeof parsed.downloadFolder === 'string' && parsed.downloadFolder
           ? parsed.downloadFolder

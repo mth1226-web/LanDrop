@@ -8,7 +8,7 @@ import { HttpServer } from './httpServer'
 import { ActivityStore } from './activityStore'
 import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile } from './transferClient'
 import { loadSettings, saveSettings } from './settings'
-import { listDirectory, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
+import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import type { AppSettings } from '../shared/types'
 
@@ -118,7 +118,7 @@ function buildApplicationMenu(): void {
 }
 
 async function startNetworking(): Promise<void> {
-  httpServer = new HttpServer({ getSharedFolder: () => settings.sharedFolder })
+  httpServer = new HttpServer({ getSharedFolders: () => settings.sharedFolders })
   const httpPort = await httpServer.start(0)
 
   discovery = new Discovery({
@@ -145,6 +145,28 @@ function findPeerOrThrow(peerDeviceId: string): { address: string; httpPort: num
   return { address: peer.address, httpPort: peer.httpPort, deviceName: peer.deviceName }
 }
 
+/** 有効なフォルダのみを既存の共有フォルダ一覧に重複なく追加して保存する */
+function addSharedFolders(paths: string[]): AppSettings {
+  const validPaths = paths.filter((p) => {
+    try {
+      return statSync(p).isDirectory()
+    } catch {
+      return false
+    }
+  })
+  const merged = Array.from(new Set([...settings.sharedFolders, ...validPaths]))
+  settings = { ...settings, sharedFolders: merged }
+  saveSettings(getSettingsFilePath(), settings)
+  return settings
+}
+
+/** 自分の共有フォルダ群からrelPathを実パスへ解決する。見つからなければ例外を投げる */
+function resolveSelfSharedEntry(relPath: string): { rootPath: string; innerRelPath: string } {
+  const resolved = resolveSharedEntry(settings.sharedFolders, relPath)
+  if (!resolved) throw new Error('invalid-path')
+  return resolved
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle('get-peers', () => discovery?.getPeers() ?? [])
 
@@ -159,11 +181,16 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('choose-shared-folder', async () => {
     if (!mainWindow) return null
-    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'multiSelections'] })
     if (result.canceled || result.filePaths.length === 0) return null
-    settings = { ...settings, sharedFolder: result.filePaths[0] }
+    return addSharedFolders(result.filePaths)
+  })
+
+  ipcMain.handle('add-shared-folders', (_event, paths: string[]) => addSharedFolders(paths))
+
+  ipcMain.handle('remove-shared-folder', (_event, folderPath: string) => {
+    settings = { ...settings, sharedFolders: settings.sharedFolders.filter((f) => f !== folderPath) }
     saveSettings(getSettingsFilePath(), settings)
-    ensureSharedFolder(settings.sharedFolder)
     return settings
   })
 
@@ -178,7 +205,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('browse-folder', async (_event, args: { peerDeviceId: string; relPath: string }) => {
     if (args.peerDeviceId === settings.deviceId) {
-      return listDirectory(settings.sharedFolder, args.relPath)
+      return browseShared(settings.sharedFolders, args.relPath)
     }
     const peer = findPeerOrThrow(args.peerDeviceId)
     return browseFolder(peer.address, peer.httpPort, args.relPath)
@@ -186,7 +213,8 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('create-folder', async (_event, args: { peerDeviceId: string; relPath: string; name: string }) => {
     if (args.peerDeviceId === settings.deviceId) {
-      createFolder(settings.sharedFolder, args.relPath, args.name)
+      const resolved = resolveSelfSharedEntry(args.relPath)
+      createFolder(resolved.rootPath, resolved.innerRelPath, args.name)
     } else {
       const peer = findPeerOrThrow(args.peerDeviceId)
       await createFolderRemote(peer.address, peer.httpPort, args.relPath, args.name)
@@ -197,7 +225,8 @@ function registerIpcHandlers(): void {
     'rename-entry',
     async (_event, args: { peerDeviceId: string; relPath: string; oldName: string; newName: string }) => {
       if (args.peerDeviceId === settings.deviceId) {
-        renameEntry(settings.sharedFolder, args.relPath, args.oldName, args.newName)
+        const resolved = resolveSelfSharedEntry(args.relPath)
+        renameEntry(resolved.rootPath, resolved.innerRelPath, args.oldName, args.newName)
       } else {
         const peer = findPeerOrThrow(args.peerDeviceId)
         await renameEntryRemote(peer.address, peer.httpPort, args.relPath, args.oldName, args.newName)
@@ -205,12 +234,13 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('open-shared-folder', () => {
-    void shell.openPath(settings.sharedFolder)
+  ipcMain.handle('open-folder', (_event, folderPath: string) => {
+    void shell.openPath(folderPath)
   })
 
   ipcMain.handle('reveal-local-file', (_event, args: { relPath: string }) => {
-    const target = resolveSafePath(settings.sharedFolder, args.relPath)
+    const resolved = resolveSharedEntry(settings.sharedFolders, args.relPath)
+    const target = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
     if (target) shell.showItemInFolder(target)
   })
 
@@ -218,8 +248,14 @@ function registerIpcHandlers(): void {
     'upload-files',
     async (_event, args: { peerDeviceId: string; relPath: string; filePaths: string[] }) => {
       if (args.peerDeviceId === settings.deviceId) {
-        const dir = resolveSafePath(settings.sharedFolder, args.relPath)
-        if (!dir) return { ok: false, error: 'invalid-path' }
+        let dir: string
+        try {
+          const resolved = resolveSelfSharedEntry(args.relPath)
+          dir = resolveSafePath(resolved.rootPath, resolved.innerRelPath) ?? ''
+          if (!dir) throw new Error('invalid-path')
+        } catch {
+          return { ok: false, error: 'invalid-path' }
+        }
         for (const filePath of args.filePaths) {
           const dest = resolveUniquePath(dir, basename(filePath))
           copyFileSync(filePath, dest)
@@ -307,12 +343,18 @@ function loadOrInitSettings(): AppSettings {
   const defaults: AppSettings = {
     deviceId: randomUUID(),
     deviceName: hostname(),
-    sharedFolder: join(app.getPath('documents'), 'LanDrop共有'),
+    sharedFolders: [join(app.getPath('documents'), 'LanDrop共有')],
     downloadFolder: app.getPath('downloads')
   }
   const loaded = loadSettings(filePath, defaults)
   if (isFirstRun) saveSettings(filePath, loaded)
-  ensureSharedFolder(loaded.sharedFolder)
+  for (const folder of loaded.sharedFolders) {
+    try {
+      ensureSharedFolder(folder)
+    } catch {
+      // 外部ドライブが外れている等で作成できない共有フォルダは無視する（一覧上は空フォルダ扱いになる）
+    }
+  }
   return loaded
 }
 

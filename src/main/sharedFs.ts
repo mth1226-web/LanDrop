@@ -63,3 +63,55 @@ export function renameEntry(root: string, relPath: string, oldName: string, newN
 export function ensureSharedFolder(root: string): void {
   fs.mkdirSync(root, { recursive: true })
 }
+
+/** 共有フォルダのパス一覧から、表示名(basename)が重複しないようラベル付けする */
+export function computeFolderLabels(folders: string[]): Array<{ label: string; path: string }> {
+  const usedLabels = new Set<string>()
+  return folders.map((folderPath) => {
+    const base = path.basename(folderPath) || folderPath
+    let label = base
+    let n = 2
+    while (usedLabels.has(label)) {
+      label = `${base} (${n})`
+      n += 1
+    }
+    usedLabels.add(label)
+    return { label, path: folderPath }
+  })
+}
+
+/** 複数の共有フォルダをルート直下の仮想フォルダとして一覧表示する */
+export function listSharedRoots(folders: string[]): BrowseEntry[] {
+  const entries = computeFolderLabels(folders).map(({ label, path: folderPath }) => {
+    let modifiedAt = Date.now()
+    try {
+      modifiedAt = fs.statSync(folderPath).mtimeMs
+    } catch {
+      // 共有フォルダが見つからない場合は現在時刻のままにしておく
+    }
+    return { name: label, isDirectory: true, size: 0, modifiedAt }
+  })
+  entries.sort((a, b) => a.name.localeCompare(b.name))
+  return entries
+}
+
+/** relPathの先頭セグメント(共有フォルダのラベル)を実パスに解決する。見つからなければnull */
+export function resolveSharedEntry(
+  folders: string[],
+  relPath: string
+): { rootPath: string; innerRelPath: string } | null {
+  const segments = (relPath ?? '').split('/').filter(Boolean)
+  const rootLabel = segments[0]
+  if (!rootLabel) return null
+  const match = computeFolderLabels(folders).find((f) => f.label === rootLabel)
+  if (!match) return null
+  return { rootPath: match.path, innerRelPath: segments.slice(1).join('/') }
+}
+
+/** 複数の共有フォルダをまたいだブラウズ。relPathが空ならルート直下の共有フォルダ一覧を返す */
+export function browseShared(folders: string[], relPath: string): BrowseEntry[] {
+  if (!relPath) return listSharedRoots(folders)
+  const resolved = resolveSharedEntry(folders, relPath)
+  if (!resolved) throw new Error('invalid path')
+  return listDirectory(resolved.rootPath, resolved.innerRelPath)
+}

@@ -37,10 +37,12 @@ export default function FolderBrowser({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const segments = pathSegments(currentPath)
+  const isAtRoot = currentPath === ''
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>): void {
     e.preventDefault()
     setIsDragOver(false)
+    if (isAtRoot) return
     const paths = Array.from(e.dataTransfer.files).map((file) => window.electronAPI.getPathForFile(file))
     if (paths.length > 0) onUploadFiles(paths)
   }
@@ -58,7 +60,7 @@ export default function FolderBrowser({
       className={isDragOver ? 'panel folder-browser drag-over' : 'panel folder-browser'}
       onDragOver={(e) => {
         e.preventDefault()
-        setIsDragOver(true)
+        if (!isAtRoot) setIsDragOver(true)
       }}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
@@ -77,21 +79,27 @@ export default function FolderBrowser({
             </span>
           ))}
         </nav>
-        <div className="folder-browser-actions">
-          <button className="button secondary" onClick={() => setShowNewFolderDialog(true)}>
-            新しいフォルダ
-          </button>
-          <button className="button primary" onClick={() => fileInputRef.current?.click()}>
-            アップロード
-          </button>
-          <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilePicked} />
-        </div>
+        {!isAtRoot && (
+          <div className="folder-browser-actions">
+            <button className="button secondary" onClick={() => setShowNewFolderDialog(true)}>
+              新しいフォルダ
+            </button>
+            <button className="button primary" onClick={() => fileInputRef.current?.click()}>
+              アップロード
+            </button>
+            <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilePicked} />
+          </div>
+        )}
       </div>
 
       {isLoading ? (
         <p className="empty-hint">読み込み中…</p>
       ) : entries.length === 0 ? (
-        <p className="empty-hint">このフォルダは空です。ファイルをドラッグ&ドロップしてアップロードできます</p>
+        <p className="empty-hint">
+          {isAtRoot
+            ? '共有フォルダがありません（設定画面から追加できます）'
+            : 'このフォルダは空です。ファイルをドラッグ&ドロップしてアップロードできます'}
+        </p>
       ) : (
         <ul className="entry-list">
           {entries.map((entry) => (
@@ -116,9 +124,11 @@ export default function FolderBrowser({
                     フォルダで表示
                   </button>
                 )}
-                <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
-                  名前変更
-                </button>
+                {!isAtRoot && (
+                  <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
+                    名前変更
+                  </button>
+                )}
               </div>
             </li>
           ))}

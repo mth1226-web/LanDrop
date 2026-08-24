@@ -4,7 +4,10 @@ import type { AppSettings } from '../../../shared/types'
 interface Props {
   settings: AppSettings
   onSaveDeviceName: (deviceName: string) => void
+  onAddSharedFolders: (paths: string[]) => void
   onChooseSharedFolder: () => void
+  onRemoveSharedFolder: (folderPath: string) => void
+  onOpenFolder: (folderPath: string) => void
   onChooseDownloadFolder: () => void
   onClose: () => void
 }
@@ -12,11 +15,22 @@ interface Props {
 export default function SettingsDialog({
   settings,
   onSaveDeviceName,
+  onAddSharedFolders,
   onChooseSharedFolder,
+  onRemoveSharedFolder,
+  onOpenFolder,
   onChooseDownloadFolder,
   onClose
 }: Props): JSX.Element {
   const [deviceName, setDeviceName] = useState(settings.deviceName)
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>): void {
+    e.preventDefault()
+    setIsDragOver(false)
+    const paths = Array.from(e.dataTransfer.files).map((file) => window.electronAPI.getPathForFile(file))
+    if (paths.length > 0) onAddSharedFolders(paths)
+  }
 
   return (
     <div className="modal-overlay">
@@ -26,15 +40,41 @@ export default function SettingsDialog({
           <span>表示名（相手のPC一覧に表示されます）</span>
           <input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} />
         </label>
-        <label className="field">
-          <span>共有フォルダ（他のPCから見える・書き込める場所）</span>
-          <div className="folder-row">
-            <input value={settings.sharedFolder} readOnly />
-            <button className="button secondary" onClick={onChooseSharedFolder}>
-              変更
+
+        <div className="field">
+          <span>共有フォルダ（他のPCから見える・書き込める場所。複数設定できます）</span>
+          <ul className="shared-folder-list">
+            {settings.sharedFolders.length === 0 && <li className="empty-hint">共有フォルダが設定されていません</li>}
+            {settings.sharedFolders.map((folderPath) => (
+              <li key={folderPath} className="shared-folder-item">
+                <span className="shared-folder-path" title={folderPath}>
+                  {folderPath}
+                </span>
+                <button className="button secondary small" onClick={() => onOpenFolder(folderPath)}>
+                  開く
+                </button>
+                <button className="button secondary small" onClick={() => onRemoveSharedFolder(folderPath)}>
+                  削除
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div
+            className={isDragOver ? 'shared-folder-dropzone drag-over' : 'shared-folder-dropzone'}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setIsDragOver(true)
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleDrop}
+          >
+            <span>ここにフォルダをドラッグ&ドロップして追加</span>
+            <button className="button secondary small" onClick={onChooseSharedFolder}>
+              フォルダを選んで追加
             </button>
           </div>
-        </label>
+        </div>
+
         <label className="field">
           <span>ダウンロード保存先（他のPCから取得したファイルの保存先）</span>
           <div className="folder-row">
@@ -44,6 +84,7 @@ export default function SettingsDialog({
             </button>
           </div>
         </label>
+
         <div className="modal-actions">
           <button className="button secondary" onClick={onClose}>
             閉じる

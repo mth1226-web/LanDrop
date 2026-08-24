@@ -8,7 +8,11 @@ import {
   listDirectory,
   createFolder,
   renameEntry,
-  isValidEntryName
+  isValidEntryName,
+  computeFolderLabels,
+  listSharedRoots,
+  resolveSharedEntry,
+  browseShared
 } from '../src/main/sharedFs'
 
 function makeRoot(): string {
@@ -92,4 +96,55 @@ test('isValidEntryNameは記号や..を拒否する', () => {
   assert.equal(isValidEntryName('..'), false)
   assert.equal(isValidEntryName('a/b'), false)
   assert.equal(isValidEntryName('a:b'), false)
+})
+
+test('computeFolderLabelsは同名basenameに連番を振って重複を避ける', () => {
+  const labels = computeFolderLabels(['C:/a/Videos', 'D:/b/Videos', 'C:/a/Docs'])
+  assert.deepEqual(
+    labels.map((l) => l.label),
+    ['Videos', 'Videos (2)', 'Docs']
+  )
+})
+
+test('listSharedRootsは共有フォルダを仮想フォルダとして名前順で返す', () => {
+  const rootA = makeRoot()
+  const rootB = makeRoot()
+  const entries = listSharedRoots([rootB, rootA])
+  assert.deepEqual(
+    entries.map((e) => e.isDirectory),
+    [true, true]
+  )
+  assert.deepEqual(
+    entries.map((e) => e.name).sort(),
+    [path.basename(rootA), path.basename(rootB)].sort()
+  )
+})
+
+test('resolveSharedEntryはラベルを実パスに解決する', () => {
+  const rootA = makeRoot()
+  const rootB = makeRoot()
+  const resolved = resolveSharedEntry([rootA, rootB], `${path.basename(rootB)}/sub/file.txt`)
+  assert.equal(resolved?.rootPath, rootB)
+  assert.equal(resolved?.innerRelPath, 'sub/file.txt')
+})
+
+test('resolveSharedEntryは空pathや未知のラベルに対してnullを返す', () => {
+  const rootA = makeRoot()
+  assert.equal(resolveSharedEntry([rootA], ''), null)
+  assert.equal(resolveSharedEntry([rootA], '存在しないラベル/x'), null)
+})
+
+test('browseSharedはrelPathが空ならルート一覧、それ以外は中身を返す', () => {
+  const rootA = makeRoot()
+  fs.writeFileSync(path.join(rootA, 'hello.txt'), 'hi')
+
+  const rootEntries = browseShared([rootA], '')
+  assert.deepEqual(rootEntries.map((e) => e.name), [path.basename(rootA)])
+
+  const innerEntries = browseShared([rootA], path.basename(rootA))
+  assert.deepEqual(innerEntries.map((e) => e.name), ['hello.txt'])
+})
+
+test('browseSharedは未知のラベルに対して例外を投げる', () => {
+  assert.throws(() => browseShared([], '存在しない'))
 })
