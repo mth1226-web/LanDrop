@@ -22,59 +22,32 @@ export interface DeviceGoodbye {
 
 export type DiscoveryMessage = DeviceAnnounce | DeviceGoodbye
 
-export interface FileMeta {
-  fileId: string
+export interface BrowseEntry {
   name: string
+  isDirectory: boolean
   size: number
-  mimeType: string
+  modifiedAt: number
 }
 
-export interface TransferOffer {
-  transferId: string
-  fromDeviceId: string
-  fromDeviceName: string
-  fromHttpPort: number
-  files: FileMeta[]
-}
+export type ActivityDirection = 'upload' | 'download'
+export type ActivityStatus = 'in_progress' | 'completed' | 'failed'
 
-export type TransferOfferDecision = 'accepted' | 'rejected'
-
-export interface TransferOfferResponse {
-  transferId: string
-  decision: TransferOfferDecision
-}
-
-export type TransferDirection = 'outgoing' | 'incoming'
-
-export type TransferStatus =
-  | 'offered'
-  | 'accepted'
-  | 'rejected'
-  | 'timeout'
-  | 'in_progress'
-  | 'completed'
-  | 'failed'
-
-export interface TransferFileProgress {
-  fileId: string
-  transferredBytes: number
-  totalBytes: number
-}
-
-export interface TransferSession {
-  transferId: string
-  direction: TransferDirection
+export interface TransferActivity {
+  id: string
+  direction: ActivityDirection
   peerDeviceId: string
   peerDeviceName: string
-  files: FileMeta[]
-  status: TransferStatus
+  fileName: string
+  transferredBytes: number
+  totalBytes: number
+  status: ActivityStatus
   createdAt: number
-  fileProgress: Record<string, TransferFileProgress>
   errorMessage?: string
 }
 
 export interface AppSettings {
   deviceId: string
   deviceName: string
-  saveFolder: string
+  sharedFolder: string
+  downloadFolder: string
 }

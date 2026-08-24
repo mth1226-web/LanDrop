@@ -5,7 +5,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { loadSettings, saveSettings } from '../src/main/settings'
 
-const DEFAULTS = { deviceId: 'default-id', deviceName: 'default-name', saveFolder: '/default/save' }
+const DEFAULTS = {
+  deviceId: 'default-id',
+  deviceName: 'default-name',
+  sharedFolder: '/default/shared',
+  downloadFolder: '/default/downloads'
+}
 
 test('ファイルが存在しない場合はデフォルト値を返す', () => {
   const filePath = path.join(os.tmpdir(), `landrop-settings-missing-${Date.now()}.json`)
@@ -14,7 +19,12 @@ test('ファイルが存在しない場合はデフォルト値を返す', () =>
 
 test('保存した内容をそのまま読み込める', () => {
   const filePath = path.join(os.tmpdir(), `landrop-settings-${Date.now()}.json`)
-  const settings = { deviceId: 'id-1', deviceName: 'My PC', saveFolder: 'C:/Users/me/Downloads' }
+  const settings = {
+    deviceId: 'id-1',
+    deviceName: 'My PC',
+    sharedFolder: 'C:/Users/me/LanDrop共有',
+    downloadFolder: 'C:/Users/me/Downloads'
+  }
   saveSettings(filePath, settings)
   assert.deepEqual(loadSettings(filePath, DEFAULTS), settings)
   fs.rmSync(filePath, { force: true })
@@ -33,7 +43,8 @@ test('一部フィールドが欠けている場合は該当フィールドの�
   assert.deepEqual(loadSettings(filePath, DEFAULTS), {
     deviceId: DEFAULTS.deviceId,
     deviceName: 'Only Name',
-    saveFolder: DEFAULTS.saveFolder
+    sharedFolder: DEFAULTS.sharedFolder,
+    downloadFolder: DEFAULTS.downloadFolder
   })
   fs.rmSync(filePath, { force: true })
 })

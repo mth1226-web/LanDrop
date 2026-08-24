@@ -1,7 +1,29 @@
-// 送信側HTTPクライアント: offer送信、offer-response送信、ファイルのストリーミング送信（Electron非依存）
+// 共有フォルダ参照・アップロード/ダウンロード・フォルダ作成・リネームのHTTPクライアント（Electron非依存）
 import http from 'node:http'
 import fs from 'node:fs'
-import type { TransferOffer, TransferOfferResponse } from '../shared/types'
+import type { BrowseEntry } from '../shared/types'
+
+function getJson<T>(address: string, port: number, path: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: address, port, path, method: 'GET' }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => {
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')) as T)
+          } catch (err) {
+            reject(err)
+          }
+        } else {
+          reject(new Error(`unexpected status ${res.statusCode}`))
+        }
+      })
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
 
 function postJson(address: string, port: number, path: string, body: unknown): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -28,30 +50,45 @@ function postJson(address: string, port: number, path: string, body: unknown): P
   })
 }
 
-export function sendOffer(address: string, port: number, offer: TransferOffer): Promise<void> {
-  return postJson(address, port, '/api/offer', offer)
+export async function browseFolder(address: string, port: number, relPath: string): Promise<BrowseEntry[]> {
+  const result = await getJson<{ ok: boolean; entries: BrowseEntry[] }>(
+    address,
+    port,
+    `/api/browse?path=${encodeURIComponent(relPath)}`
+  )
+  return result.entries
 }
 
-export function sendOfferResponse(address: string, port: number, response: TransferOfferResponse): Promise<void> {
-  return postJson(address, port, '/api/offer-response', response)
+export function createFolderRemote(address: string, port: number, relPath: string, name: string): Promise<void> {
+  return postJson(address, port, '/api/mkdir', { path: relPath, name })
 }
 
-export function sendFile(params: {
+export function renameEntryRemote(
+  address: string,
+  port: number,
+  relPath: string,
+  oldName: string,
+  newName: string
+): Promise<void> {
+  return postJson(address, port, '/api/rename', { path: relPath, oldName, newName })
+}
+
+export function uploadFile(params: {
   address: string
   port: number
-  transferId: string
-  fileId: string
+  relPath: string
+  name: string
   filePath: string
   size: number
   onProgress?: (transferredBytes: number) => void
 }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const path = `/api/send-file?transferId=${encodeURIComponent(params.transferId)}&fileId=${encodeURIComponent(params.fileId)}`
+    const query = `path=${encodeURIComponent(params.relPath)}&name=${encodeURIComponent(params.name)}`
     const req = http.request(
       {
         host: params.address,
         port: params.port,
-        path,
+        path: `/api/upload?${query}`,
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream', 'content-length': params.size }
       },
@@ -74,5 +111,47 @@ export function sendFile(params: {
     })
     readStream.on('error', reject)
     readStream.pipe(req)
+  })
+}
+
+export function downloadFile(params: {
+  address: string
+  port: number
+  relPath: string
+  destPath: string
+  onProgress?: (transferredBytes: number, totalBytes: number) => void
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: params.address,
+        port: params.port,
+        path: `/api/download?path=${encodeURIComponent(params.relPath)}`,
+        method: 'GET'
+      },
+      (res) => {
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          res.resume()
+          reject(new Error(`unexpected status ${res.statusCode}`))
+          return
+        }
+        const total = Number(res.headers['content-length'] ?? 0)
+        const writeStream = fs.createWriteStream(params.destPath)
+        let received = 0
+        res.on('data', (chunk: Buffer) => {
+          received += chunk.length
+          params.onProgress?.(received, total)
+        })
+        res.on('error', (err) => {
+          writeStream.destroy()
+          reject(err)
+        })
+        writeStream.on('error', reject)
+        writeStream.on('finish', resolve)
+        res.pipe(writeStream)
+      }
+    )
+    req.on('error', reject)
+    req.end()
   })
 }

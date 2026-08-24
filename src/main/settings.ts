@@ -10,7 +10,12 @@ export function loadSettings(settingsFilePath: string, defaults: AppSettings): A
     return {
       deviceId: typeof parsed.deviceId === 'string' && parsed.deviceId ? parsed.deviceId : defaults.deviceId,
       deviceName: typeof parsed.deviceName === 'string' && parsed.deviceName ? parsed.deviceName : defaults.deviceName,
-      saveFolder: typeof parsed.saveFolder === 'string' && parsed.saveFolder ? parsed.saveFolder : defaults.saveFolder
+      sharedFolder:
+        typeof parsed.sharedFolder === 'string' && parsed.sharedFolder ? parsed.sharedFolder : defaults.sharedFolder,
+      downloadFolder:
+        typeof parsed.downloadFolder === 'string' && parsed.downloadFolder
+          ? parsed.downloadFolder
+          : defaults.downloadFolder
     }
   } catch {
     return defaults

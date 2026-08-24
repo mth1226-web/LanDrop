@@ -1,32 +1,78 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import type { AppSettings, Peer, TransferSession } from '../../../shared/types'
+import type { AppSettings, BrowseEntry, Peer, TransferActivity } from '../../../shared/types'
 
 interface AppState {
   peers: Peer[]
-  sessions: Record<string, TransferSession>
   settings: AppSettings | null
+  activities: Record<string, TransferActivity>
+  selectedPeerId: string | null
+  currentPath: string
+  entries: BrowseEntry[]
+  isLoadingEntries: boolean
+
   setPeers: (peers: Peer[]) => void
-  upsertSession: (session: TransferSession) => void
   setSettings: (settings: AppSettings) => void
+  upsertActivity: (activity: TransferActivity) => void
+  selectPeer: (peerId: string) => void
+  setCurrentPath: (path: string) => void
+  setEntries: (entries: BrowseEntry[]) => void
+  setLoadingEntries: (loading: boolean) => void
 }
 
 export const useAppStore = create<AppState>()(
   immer((set) => ({
     peers: [],
-    sessions: {},
     settings: null,
+    activities: {},
+    selectedPeerId: null,
+    currentPath: '',
+    entries: [],
+    isLoadingEntries: false,
+
     setPeers: (peers) =>
       set((s) => {
         s.peers = peers
       }),
-    upsertSession: (session) =>
-      set((s) => {
-        s.sessions[session.transferId] = session
-      }),
     setSettings: (settings) =>
       set((s) => {
         s.settings = settings
+      }),
+    upsertActivity: (activity) =>
+      set((s) => {
+        s.activities[activity.id] = activity
+      }),
+    selectPeer: (peerId) =>
+      set((s) => {
+        s.selectedPeerId = peerId
+        s.currentPath = ''
+        s.entries = []
+      }),
+    setCurrentPath: (path) =>
+      set((s) => {
+        s.currentPath = path
+      }),
+    setEntries: (entries) =>
+      set((s) => {
+        s.entries = entries
+      }),
+    setLoadingEntries: (loading) =>
+      set((s) => {
+        s.isLoadingEntries = loading
       })
   }))
 )
+
+export function joinRelPath(basePath: string, name: string): string {
+  return basePath ? `${basePath}/${name}` : name
+}
+
+export function parentRelPath(currentPath: string): string {
+  const segments = currentPath.split('/').filter(Boolean)
+  segments.pop()
+  return segments.join('/')
+}
+
+export function pathSegments(currentPath: string): string[] {
+  return currentPath.split('/').filter(Boolean)
+}

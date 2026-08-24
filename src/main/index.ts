@@ -1,44 +1,23 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
-import { join } from 'path'
-import { existsSync, statSync } from 'fs'
+import { join, basename } from 'path'
+import { existsSync, statSync, copyFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { hostname } from 'os'
 import { Discovery } from './discovery'
 import { HttpServer } from './httpServer'
-import { TransferStore } from './transferStore'
-import { sendOffer, sendOfferResponse, sendFile } from './transferClient'
+import { ActivityStore } from './activityStore'
+import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile } from './transferClient'
 import { loadSettings, saveSettings } from './settings'
-import type { AppSettings, FileMeta, TransferOfferDecision, TransferSession } from '../shared/types'
-
-const OFFER_TIMEOUT_MS = 60_000
+import { listDirectory, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
+import { resolveUniquePath } from './fileSave'
+import type { AppSettings } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let settings: AppSettings
 let httpServer: HttpServer | null = null
 let discovery: Discovery | null = null
-let ownHttpPort = 0
 
-const transferStore = new TransferStore()
-
-interface PendingIncomingOffer {
-  fromAddress: string
-  fromHttpPort: number
-}
-const pendingIncomingOffers = new Map<string, PendingIncomingOffer>()
-
-interface PendingOutgoingFile {
-  fileId: string
-  filePath: string
-  size: number
-}
-interface PendingOutgoingTransfer {
-  peerAddress: string
-  peerHttpPort: number
-  files: PendingOutgoingFile[]
-}
-const pendingOutgoingTransfers = new Map<string, PendingOutgoingTransfer>()
-
-const offerTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const activityStore = new ActivityStore()
 
 function getSettingsFilePath(): string {
   return join(app.getPath('userData'), 'landrop-settings.json')
@@ -48,33 +27,16 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args)
 }
 
-function broadcastSession(session: TransferSession | undefined): void {
-  if (session) sendToRenderer('transfer-session-updated', session)
-}
-
-function clearOfferTimeout(transferId: string): void {
-  const timer = offerTimeouts.get(transferId)
-  if (timer) {
-    clearTimeout(timer)
-    offerTimeouts.delete(transferId)
-  }
-}
-
-function armOfferTimeout(transferId: string): void {
-  const timer = setTimeout(() => {
-    offerTimeouts.delete(transferId)
-    if (transferStore.transition(transferId, 'timeout')) {
-      broadcastSession(transferStore.get(transferId))
-    }
-  }, OFFER_TIMEOUT_MS)
-  offerTimeouts.set(transferId, timer)
+function broadcastActivity(id: string): void {
+  const activity = activityStore.get(id)
+  if (activity) sendToRenderer('activity-updated', activity)
 }
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 960,
+    width: 1000,
     height: 700,
-    minWidth: 720,
+    minWidth: 760,
     minHeight: 520,
     title: 'LanDrop',
     backgroundColor: '#14141c',
@@ -98,36 +60,17 @@ function createWindow(): BrowserWindow {
 }
 
 async function startNetworking(): Promise<void> {
-  httpServer = new HttpServer({ transferStore, getSaveFolder: () => settings.saveFolder })
-  ownHttpPort = await httpServer.start(0)
+  httpServer = new HttpServer({ getSharedFolder: () => settings.sharedFolder })
+  const httpPort = await httpServer.start(0)
 
   discovery = new Discovery({
     deviceId: settings.deviceId,
     deviceName: settings.deviceName,
-    getHttpPort: () => ownHttpPort
+    getHttpPort: () => httpPort
   })
 
-  httpServer.on('offer', ({ session, fromAddress, fromHttpPort }) => {
-    pendingIncomingOffers.set(session.transferId, { fromAddress, fromHttpPort })
-    armOfferTimeout(session.transferId)
-    broadcastSession(session)
-  })
-
-  httpServer.on('offer-response', (session) => {
-    clearOfferTimeout(session.transferId)
-    broadcastSession(session)
-    if (session.status === 'accepted') void startSendingFiles(session.transferId)
-    else pendingOutgoingTransfers.delete(session.transferId)
-  })
-
-  httpServer.on('transfer-progress', (session) => broadcastSession(session))
-  httpServer.on('transfer-completed', (session) => {
-    pendingIncomingOffers.delete(session.transferId)
-    broadcastSession(session)
-  })
-  httpServer.on('transfer-failed', (session) => {
-    pendingIncomingOffers.delete(session.transferId)
-    broadcastSession(session)
+  httpServer.on('upload-received', (payload) => {
+    sendToRenderer('peer-uploaded', payload)
   })
 
   discovery.on('peers-changed', (peers) => sendToRenderer('peers-changed', peers))
@@ -135,35 +78,13 @@ async function startNetworking(): Promise<void> {
   discovery.start()
 }
 
-async function startSendingFiles(transferId: string): Promise<void> {
-  const pending = pendingOutgoingTransfers.get(transferId)
-  if (!pending) return
-
-  transferStore.transition(transferId, 'in_progress')
-  broadcastSession(transferStore.get(transferId))
-
-  try {
-    for (const file of pending.files) {
-      await sendFile({
-        address: pending.peerAddress,
-        port: pending.peerHttpPort,
-        transferId,
-        fileId: file.fileId,
-        filePath: file.filePath,
-        size: file.size,
-        onProgress: (transferredBytes) => {
-          transferStore.updateProgress(transferId, file.fileId, transferredBytes)
-          broadcastSession(transferStore.get(transferId))
-        }
-      })
-    }
-    transferStore.transition(transferId, 'completed')
-  } catch (err) {
-    transferStore.transition(transferId, 'failed', String(err))
-  } finally {
-    pendingOutgoingTransfers.delete(transferId)
-    broadcastSession(transferStore.get(transferId))
+function findPeerOrThrow(peerDeviceId: string): { address: string; httpPort: number; deviceName: string } {
+  if (peerDeviceId === settings.deviceId) {
+    return { address: '', httpPort: 0, deviceName: settings.deviceName }
   }
+  const peer = discovery?.getPeers().find((p) => p.deviceId === peerDeviceId)
+  if (!peer) throw new Error('peer-not-found')
+  return { address: peer.address, httpPort: peer.httpPort, deviceName: peer.deviceName }
 }
 
 function registerIpcHandlers(): void {
@@ -171,94 +92,155 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('get-settings', () => settings)
 
-  ipcMain.handle('set-settings', (_event, patch: { deviceName: string; saveFolder: string }) => {
-    settings = { ...settings, deviceName: patch.deviceName, saveFolder: patch.saveFolder }
+  ipcMain.handle('set-settings', (_event, patch: { deviceName: string }) => {
+    settings = { ...settings, deviceName: patch.deviceName }
     saveSettings(getSettingsFilePath(), settings)
     discovery?.setDeviceName(settings.deviceName)
     return settings
   })
 
-  ipcMain.handle('choose-save-folder', async () => {
+  ipcMain.handle('choose-shared-folder', async () => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
     if (result.canceled || result.filePaths.length === 0) return null
-    return result.filePaths[0]
+    settings = { ...settings, sharedFolder: result.filePaths[0] }
+    saveSettings(getSettingsFilePath(), settings)
+    ensureSharedFolder(settings.sharedFolder)
+    return settings
   })
 
-  ipcMain.handle('open-save-folder', () => {
-    void shell.openPath(settings.saveFolder)
+  ipcMain.handle('choose-download-folder', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
+    if (result.canceled || result.filePaths.length === 0) return null
+    settings = { ...settings, downloadFolder: result.filePaths[0] }
+    saveSettings(getSettingsFilePath(), settings)
+    return settings
   })
 
-  ipcMain.handle('send-files', async (_event, args: { peerDeviceId: string; filePaths: string[] }) => {
-    const peer = discovery?.getPeers().find((p) => p.deviceId === args.peerDeviceId)
-    if (!peer) return { ok: false, error: 'peer-not-found' }
-    if (!httpServer) return { ok: false, error: 'not-ready' }
-
-    const transferId = randomUUID()
-    const files: FileMeta[] = []
-    const outgoingFiles: PendingOutgoingFile[] = []
-    for (const filePath of args.filePaths) {
-      const stat = statSync(filePath)
-      const fileId = randomUUID()
-      const name = filePath.split(/[\\/]/).pop() ?? filePath
-      files.push({ fileId, name, size: stat.size, mimeType: 'application/octet-stream' })
-      outgoingFiles.push({ fileId, filePath, size: stat.size })
+  ipcMain.handle('browse-folder', async (_event, args: { peerDeviceId: string; relPath: string }) => {
+    if (args.peerDeviceId === settings.deviceId) {
+      return listDirectory(settings.sharedFolder, args.relPath)
     }
+    const peer = findPeerOrThrow(args.peerDeviceId)
+    return browseFolder(peer.address, peer.httpPort, args.relPath)
+  })
 
-    transferStore.create({
-      transferId,
-      direction: 'outgoing',
-      peerDeviceId: peer.deviceId,
-      peerDeviceName: peer.deviceName,
-      files,
-      now: Date.now()
-    })
-    pendingOutgoingTransfers.set(transferId, {
-      peerAddress: peer.address,
-      peerHttpPort: peer.httpPort,
-      files: outgoingFiles
-    })
-    armOfferTimeout(transferId)
-    broadcastSession(transferStore.get(transferId))
+  ipcMain.handle('create-folder', async (_event, args: { peerDeviceId: string; relPath: string; name: string }) => {
+    if (args.peerDeviceId === settings.deviceId) {
+      createFolder(settings.sharedFolder, args.relPath, args.name)
+    } else {
+      const peer = findPeerOrThrow(args.peerDeviceId)
+      await createFolderRemote(peer.address, peer.httpPort, args.relPath, args.name)
+    }
+  })
 
-    try {
-      await sendOffer(peer.address, peer.httpPort, {
-        transferId,
-        fromDeviceId: settings.deviceId,
-        fromDeviceName: settings.deviceName,
-        fromHttpPort: ownHttpPort,
-        files
+  ipcMain.handle(
+    'rename-entry',
+    async (_event, args: { peerDeviceId: string; relPath: string; oldName: string; newName: string }) => {
+      if (args.peerDeviceId === settings.deviceId) {
+        renameEntry(settings.sharedFolder, args.relPath, args.oldName, args.newName)
+      } else {
+        const peer = findPeerOrThrow(args.peerDeviceId)
+        await renameEntryRemote(peer.address, peer.httpPort, args.relPath, args.oldName, args.newName)
+      }
+    }
+  )
+
+  ipcMain.handle('open-shared-folder', () => {
+    void shell.openPath(settings.sharedFolder)
+  })
+
+  ipcMain.handle('reveal-local-file', (_event, args: { relPath: string }) => {
+    const target = resolveSafePath(settings.sharedFolder, args.relPath)
+    if (target) shell.showItemInFolder(target)
+  })
+
+  ipcMain.handle(
+    'upload-files',
+    async (_event, args: { peerDeviceId: string; relPath: string; filePaths: string[] }) => {
+      if (args.peerDeviceId === settings.deviceId) {
+        const dir = resolveSafePath(settings.sharedFolder, args.relPath)
+        if (!dir) return { ok: false, error: 'invalid-path' }
+        for (const filePath of args.filePaths) {
+          const dest = resolveUniquePath(dir, basename(filePath))
+          copyFileSync(filePath, dest)
+        }
+        return { ok: true }
+      }
+
+      const peer = findPeerOrThrow(args.peerDeviceId)
+      for (const filePath of args.filePaths) {
+        const stat = statSync(filePath)
+        const id = randomUUID()
+        activityStore.create({
+          id,
+          direction: 'upload',
+          peerDeviceId: args.peerDeviceId,
+          peerDeviceName: peer.deviceName,
+          fileName: basename(filePath),
+          totalBytes: stat.size,
+          now: Date.now()
+        })
+        broadcastActivity(id)
+        try {
+          await uploadFile({
+            address: peer.address,
+            port: peer.httpPort,
+            relPath: args.relPath,
+            name: basename(filePath),
+            filePath,
+            size: stat.size,
+            onProgress: (transferred) => {
+              activityStore.updateProgress(id, transferred)
+              broadcastActivity(id)
+            }
+          })
+          activityStore.complete(id)
+        } catch (err) {
+          activityStore.fail(id, String(err))
+        }
+        broadcastActivity(id)
+      }
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'download-file',
+    async (_event, args: { peerDeviceId: string; relPath: string; fileName: string; size: number }) => {
+      const peer = findPeerOrThrow(args.peerDeviceId)
+      const destPath = resolveUniquePath(settings.downloadFolder, args.fileName)
+      const id = randomUUID()
+      activityStore.create({
+        id,
+        direction: 'download',
+        peerDeviceId: args.peerDeviceId,
+        peerDeviceName: peer.deviceName,
+        fileName: args.fileName,
+        totalBytes: args.size,
+        now: Date.now()
       })
-    } catch (err) {
-      clearOfferTimeout(transferId)
-      pendingOutgoingTransfers.delete(transferId)
-      transferStore.transition(transferId, 'failed', String(err))
-      broadcastSession(transferStore.get(transferId))
-      return { ok: false, error: String(err) }
+      broadcastActivity(id)
+      try {
+        await downloadFile({
+          address: peer.address,
+          port: peer.httpPort,
+          relPath: args.relPath,
+          destPath,
+          onProgress: (transferred) => {
+            activityStore.updateProgress(id, transferred)
+            broadcastActivity(id)
+          }
+        })
+        activityStore.complete(id)
+      } catch (err) {
+        activityStore.fail(id, String(err))
+      }
+      broadcastActivity(id)
+      return { ok: true }
     }
-
-    return { ok: true }
-  })
-
-  ipcMain.handle('respond-to-offer', async (_event, args: { transferId: string; decision: TransferOfferDecision }) => {
-    clearOfferTimeout(args.transferId)
-    const nextStatus = args.decision === 'accepted' ? 'accepted' : 'rejected'
-    transferStore.transition(args.transferId, nextStatus)
-    broadcastSession(transferStore.get(args.transferId))
-
-    const origin = pendingIncomingOffers.get(args.transferId)
-    pendingIncomingOffers.delete(args.transferId)
-    if (!origin) return
-
-    try {
-      await sendOfferResponse(origin.fromAddress, origin.fromHttpPort, {
-        transferId: args.transferId,
-        decision: args.decision
-      })
-    } catch {
-      // 送信側が既に終了しているなどで応答が届かない場合は諦める（送信側は自身のタイムアウトで処理する）
-    }
-  })
+  )
 }
 
 function loadOrInitSettings(): AppSettings {
@@ -267,10 +249,12 @@ function loadOrInitSettings(): AppSettings {
   const defaults: AppSettings = {
     deviceId: randomUUID(),
     deviceName: hostname(),
-    saveFolder: app.getPath('downloads')
+    sharedFolder: join(app.getPath('documents'), 'LanDrop共有'),
+    downloadFolder: app.getPath('downloads')
   }
   const loaded = loadSettings(filePath, defaults)
   if (isFirstRun) saveSettings(filePath, loaded)
+  ensureSharedFolder(loaded.sharedFolder)
   return loaded
 }
 

@@ -1,4 +1,4 @@
-import type { TransferStatus } from '../../../shared/types'
+import type { ActivityStatus } from '../../../shared/types'
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -7,16 +7,12 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-const STATUS_LABELS: Record<TransferStatus, string> = {
-  offered: '応答待ち',
-  accepted: '承諾済み',
-  rejected: '拒否されました',
-  timeout: 'タイムアウト',
+const STATUS_LABELS: Record<ActivityStatus, string> = {
   in_progress: '転送中',
   completed: '完了',
   failed: '失敗'
 }
 
-export function statusLabel(status: TransferStatus): string {
+export function statusLabel(status: ActivityStatus): string {
   return STATUS_LABELS[status]
 }

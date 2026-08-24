@@ -1,51 +1,115 @@
 import { useEffect, useState } from 'react'
-import { useAppStore } from './store'
+import { useAppStore, joinRelPath } from './store'
 import PeerList from './components/PeerList'
-import DropZone from './components/DropZone'
-import TransferList from './components/TransferList'
-import IncomingOfferDialog from './components/IncomingOfferDialog'
+import FolderBrowser from './components/FolderBrowser'
+import ActivityList from './components/ActivityList'
 import SettingsDialog from './components/SettingsDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
+import type { BrowseEntry, Peer } from '../../shared/types'
 
 export default function App(): JSX.Element {
   const peers = useAppStore((s) => s.peers)
-  const sessions = useAppStore((s) => s.sessions)
   const settings = useAppStore((s) => s.settings)
-  const setPeers = useAppStore((s) => s.setPeers)
-  const upsertSession = useAppStore((s) => s.upsertSession)
-  const setSettings = useAppStore((s) => s.setSettings)
+  const activities = useAppStore((s) => s.activities)
+  const selectedPeerId = useAppStore((s) => s.selectedPeerId)
+  const currentPath = useAppStore((s) => s.currentPath)
+  const entries = useAppStore((s) => s.entries)
+  const isLoadingEntries = useAppStore((s) => s.isLoadingEntries)
 
-  const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null)
+  const setPeers = useAppStore((s) => s.setPeers)
+  const setSettings = useAppStore((s) => s.setSettings)
+  const upsertActivity = useAppStore((s) => s.upsertActivity)
+  const selectPeer = useAppStore((s) => s.selectPeer)
+  const setCurrentPath = useAppStore((s) => s.setCurrentPath)
+  const setEntries = useAppStore((s) => s.setEntries)
+  const setLoadingEntries = useAppStore((s) => s.setLoadingEntries)
+
   const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     window.electronAPI.getPeers().then(setPeers)
     window.electronAPI.getSettings().then(setSettings)
     const unsubscribePeers = window.electronAPI.onPeersChanged(setPeers)
-    const unsubscribeSessions = window.electronAPI.onTransferSessionUpdated(upsertSession)
+    const unsubscribeActivity = window.electronAPI.onActivityUpdated(upsertActivity)
+    const unsubscribeUploaded = window.electronAPI.onPeerUploaded(() => reloadEntries())
     return () => {
       unsubscribePeers()
-      unsubscribeSessions()
+      unsubscribeActivity()
+      unsubscribeUploaded()
     }
-  }, [setPeers, setSettings, upsertSession])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const selectedPeer = peers.find((p) => p.deviceId === selectedPeerId) ?? null
-  const sessionList = Object.values(sessions).sort((a, b) => b.createdAt - a.createdAt)
-  const incomingOffer = sessionList.find((s) => s.direction === 'incoming' && s.status === 'offered')
+  useEffect(() => {
+    if (settings && !selectedPeerId) selectPeer(settings.deviceId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings])
 
-  function handleSendFiles(filePaths: string[]): void {
+  useEffect(() => {
+    reloadEntries()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPeerId, currentPath])
+
+  function reloadEntries(): void {
     if (!selectedPeerId) return
-    void window.electronAPI.sendFiles(selectedPeerId, filePaths)
+    setLoadingEntries(true)
+    window.electronAPI
+      .browseFolder(selectedPeerId, currentPath)
+      .then(setEntries)
+      .catch(() => setEntries([]))
+      .finally(() => setLoadingEntries(false))
   }
 
-  function handleRespondToOffer(transferId: string, decision: 'accepted' | 'rejected'): void {
-    void window.electronAPI.respondToOffer(transferId, decision)
+  const isSelf = selectedPeerId === settings?.deviceId
+  const displayPeers: Peer[] = settings
+    ? [
+        { deviceId: settings.deviceId, deviceName: settings.deviceName, address: '', httpPort: 0, lastSeenAt: Date.now() },
+        ...peers
+      ]
+    : peers
+  const selectedPeer = displayPeers.find((p) => p.deviceId === selectedPeerId) ?? null
+  const activityList = Object.values(activities).sort((a, b) => b.createdAt - a.createdAt)
+
+  function handleUploadFiles(filePaths: string[]): void {
+    if (!selectedPeerId) return
+    window.electronAPI.uploadFiles(selectedPeerId, currentPath, filePaths).then(() => reloadEntries())
   }
 
-  async function handleSaveSettings(patch: { deviceName: string; saveFolder: string }): Promise<void> {
-    const updated = await window.electronAPI.setSettings(patch)
+  function handleCreateFolder(name: string): void {
+    if (!selectedPeerId) return
+    window.electronAPI.createFolder(selectedPeerId, currentPath, name).then(() => reloadEntries())
+  }
+
+  function handleRename(oldName: string, newName: string): void {
+    if (!selectedPeerId) return
+    window.electronAPI.renameEntry(selectedPeerId, currentPath, oldName, newName).then(() => reloadEntries())
+  }
+
+  function handleDownload(entry: BrowseEntry): void {
+    if (!selectedPeerId) return
+    void window.electronAPI.downloadFile(selectedPeerId, joinRelPath(currentPath, entry.name), entry.name, entry.size)
+  }
+
+  function handleRevealLocal(entry: BrowseEntry): void {
+    void window.electronAPI.revealLocalFile(joinRelPath(currentPath, entry.name))
+  }
+
+  async function handleSaveDeviceName(deviceName: string): Promise<void> {
+    const updated = await window.electronAPI.setSettings({ deviceName })
     setSettings(updated)
-    setShowSettings(false)
+  }
+
+  async function handleChooseSharedFolder(): Promise<void> {
+    const updated = await window.electronAPI.chooseSharedFolder()
+    if (updated) {
+      setSettings(updated)
+      reloadEntries()
+    }
+  }
+
+  async function handleChooseDownloadFolder(): Promise<void> {
+    const updated = await window.electronAPI.chooseDownloadFolder()
+    if (updated) setSettings(updated)
   }
 
   return (
@@ -60,16 +124,39 @@ export default function App(): JSX.Element {
       <FirewallHintBanner />
 
       <main className="app-main">
-        <PeerList peers={peers} selectedPeerId={selectedPeerId} onSelect={setSelectedPeerId} />
+        <PeerList peers={displayPeers} selfDeviceId={settings?.deviceId ?? null} selectedPeerId={selectedPeerId} onSelect={selectPeer} />
         <div className="app-center">
-          <DropZone selectedPeer={selectedPeer} onSendFiles={handleSendFiles} />
-          <TransferList sessions={sessionList} />
+          {selectedPeer ? (
+            <FolderBrowser
+              peerName={isSelf ? `${selectedPeer.deviceName}（自分）` : selectedPeer.deviceName}
+              currentPath={currentPath}
+              entries={entries}
+              isLoading={isLoadingEntries}
+              isSelf={isSelf}
+              onNavigate={setCurrentPath}
+              onUploadFiles={handleUploadFiles}
+              onCreateFolder={handleCreateFolder}
+              onRename={handleRename}
+              onDownload={handleDownload}
+              onRevealLocal={handleRevealLocal}
+            />
+          ) : (
+            <div className="panel folder-browser">
+              <p className="empty-hint">左のPC一覧から見たい端末を選んでください</p>
+            </div>
+          )}
+          <ActivityList activities={activityList} />
         </div>
       </main>
 
-      {incomingOffer && <IncomingOfferDialog session={incomingOffer} onRespond={handleRespondToOffer} />}
       {showSettings && settings && (
-        <SettingsDialog settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
+        <SettingsDialog
+          settings={settings}
+          onSaveDeviceName={handleSaveDeviceName}
+          onChooseSharedFolder={handleChooseSharedFolder}
+          onChooseDownloadFolder={handleChooseDownloadFolder}
+          onClose={() => setShowSettings(false)}
+        />
       )}
     </div>
   )
