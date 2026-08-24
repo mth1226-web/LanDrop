@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, MenuItemConstructorOptions } from 'electron'
 import { join, basename } from 'path'
 import { existsSync, statSync, copyFileSync } from 'fs'
 import { randomUUID } from 'crypto'
@@ -57,6 +57,64 @@ function createWindow(): BrowserWindow {
   }
 
   return win
+}
+
+function buildApplicationMenu(): void {
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: 'ファイル',
+      submenu: [{ role: 'quit', label: '終了' }]
+    },
+    {
+      label: '編集',
+      submenu: [
+        { role: 'undo', label: '元に戻す' },
+        { role: 'redo', label: 'やり直し' },
+        { type: 'separator' },
+        { role: 'cut', label: '切り取り' },
+        { role: 'copy', label: 'コピー' },
+        { role: 'paste', label: '貼り付け' },
+        { role: 'selectAll', label: 'すべて選択' }
+      ]
+    },
+    {
+      label: '表示',
+      submenu: [
+        { role: 'reload', label: '再読み込み' },
+        { role: 'toggleDevTools', label: '開発者ツール' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: '実際のサイズ' },
+        { role: 'zoomIn', label: '拡大' },
+        { role: 'zoomOut', label: '縮小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'フルスクリーンに切り替え' }
+      ]
+    },
+    {
+      label: 'ウィンドウ',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'close', label: '閉じる' }
+      ]
+    },
+    {
+      label: 'ヘルプ',
+      submenu: [
+        {
+          label: 'LanDropについて',
+          click: () => {
+            void dialog.showMessageBox({
+              type: 'info',
+              title: 'LanDropについて',
+              message: 'LanDrop',
+              detail: '同じLAN内のPC同士で共有フォルダを閲覧・アップロード/ダウンロードできるアプリです。'
+            })
+          }
+        }
+      ]
+    }
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 async function startNetworking(): Promise<void> {
@@ -259,6 +317,7 @@ function loadOrInitSettings(): AppSettings {
 }
 
 app.whenReady().then(async () => {
+  buildApplicationMenu()
   settings = loadOrInitSettings()
   mainWindow = createWindow()
   registerIpcHandlers()
