@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('upload-files', { peerDeviceId, relPath, filePaths }),
   downloadFile: (peerDeviceId: string, relPath: string, fileName: string, size: number): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('download-file', { peerDeviceId, relPath, fileName, size }),
+  downloadEntries: (peerDeviceId: string, relPath: string, entries: BrowseEntry[]): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('download-entries', { peerDeviceId, relPath, entries }),
 
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),

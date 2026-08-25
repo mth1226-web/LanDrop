@@ -92,9 +92,9 @@ export default function App(): JSX.Element {
     window.electronAPI.renameEntry(selectedPeerId, currentPath, oldName, newName).then(() => reloadEntries())
   }
 
-  function handleDownload(entry: BrowseEntry): void {
-    if (!selectedPeerId) return
-    void window.electronAPI.downloadFile(selectedPeerId, joinRelPath(currentPath, entry.name), entry.name, entry.size)
+  function handleDownload(selected: BrowseEntry[]): void {
+    if (!selectedPeerId || selected.length === 0) return
+    void window.electronAPI.downloadEntries(selectedPeerId, currentPath, selected)
   }
 
   function handleRevealLocal(entry: BrowseEntry): void {

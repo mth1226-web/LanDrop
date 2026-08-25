@@ -4,6 +4,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
+import archiver from 'archiver'
 import { browseShared, resolveSharedEntry, resolveSafePath, createFolder, renameEntry, isValidEntryName } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { renderWebUiHtml } from './webUi'
@@ -63,6 +64,7 @@ export class HttpServer extends EventEmitter {
       }
       if (req.method === 'GET' && url.pathname === '/api/browse') return this.handleBrowse(res, url)
       if (req.method === 'GET' && url.pathname === '/api/download') return this.handleDownload(res, url)
+      if (req.method === 'GET' && url.pathname === '/api/download-zip') return this.handleDownloadZip(res, url)
       if (req.method === 'POST' && url.pathname === '/api/upload') return void this.handleUpload(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/mkdir') return void this.handleMkdir(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/rename') return void this.handleRename(req, res, url)
@@ -137,6 +139,46 @@ export class HttpServer extends EventEmitter {
       'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(target))}`
     })
     fs.createReadStream(target).pipe(res)
+  }
+
+  /** 複数のファイル/フォルダをまとめてzipでダウンロードする(フォルダ単位・複数選択ダウンロード用) */
+  private handleDownloadZip(res: http.ServerResponse, url: URL): void {
+    const relPaths = url.searchParams.getAll('path')
+    if (relPaths.length === 0) {
+      res.writeHead(400)
+      res.end()
+      return
+    }
+
+    const targets: { absPath: string; arcName: string; isDirectory: boolean }[] = []
+    for (const relPath of relPaths) {
+      const resolved = resolveSharedEntry(this.getSharedFolders(), relPath)
+      const absPath = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
+      if (!absPath || !fs.existsSync(absPath)) {
+        res.writeHead(404)
+        res.end()
+        return
+      }
+      targets.push({ absPath, arcName: path.basename(absPath), isDirectory: fs.statSync(absPath).isDirectory() })
+    }
+
+    const zipName = targets.length === 1 ? `${targets[0].arcName}.zip` : 'LanDrop-download.zip'
+    res.writeHead(200, {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`
+    })
+
+    const archive = archiver('zip', { zlib: { level: 6 } })
+    archive.on('error', () => res.destroy())
+    archive.pipe(res)
+    for (const target of targets) {
+      if (target.isDirectory) {
+        archive.directory(target.absPath, target.arcName)
+      } else {
+        archive.file(target.absPath, { name: target.arcName })
+      }
+    }
+    void archive.finalize()
   }
 
   private async handleUpload(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {

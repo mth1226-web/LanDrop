@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BrowseEntry } from '../../../shared/types'
 import { joinRelPath, pathSegments } from '../store'
 import { formatBytes } from '../utils/format'
@@ -14,7 +14,7 @@ interface Props {
   onUploadFiles: (filePaths: string[]) => void
   onCreateFolder: (name: string) => void
   onRename: (oldName: string, newName: string) => void
-  onDownload: (entry: BrowseEntry) => void
+  onDownload: (entries: BrowseEntry[]) => void
   onRevealLocal: (entry: BrowseEntry) => void
 }
 
@@ -34,10 +34,24 @@ export default function FolderBrowser({
   const [isDragOver, setIsDragOver] = useState(false)
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false)
   const [renamingEntry, setRenamingEntry] = useState<BrowseEntry | null>(null)
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const segments = pathSegments(currentPath)
   const isAtRoot = currentPath === ''
+
+  useEffect(() => {
+    setSelectedNames(new Set())
+  }, [currentPath])
+
+  function toggleSelected(name: string): void {
+    setSelectedNames((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>): void {
     e.preventDefault()
@@ -54,6 +68,8 @@ export default function FolderBrowser({
     onUploadFiles(paths)
     e.target.value = ''
   }
+
+  const selectedEntries = entries.filter((e) => selectedNames.has(e.name))
 
   return (
     <div
@@ -79,17 +95,24 @@ export default function FolderBrowser({
             </span>
           ))}
         </nav>
-        {!isAtRoot && (
-          <div className="folder-browser-actions">
-            <button className="button secondary" onClick={() => setShowNewFolderDialog(true)}>
-              新しいフォルダ
+        <div className="folder-browser-actions">
+          {!isSelf && selectedEntries.length > 0 && (
+            <button className="button primary" onClick={() => onDownload(selectedEntries)}>
+              選択した{selectedEntries.length}件をダウンロード
             </button>
-            <button className="button primary" onClick={() => fileInputRef.current?.click()}>
-              アップロード
-            </button>
-            <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilePicked} />
-          </div>
-        )}
+          )}
+          {!isAtRoot && (
+            <>
+              <button className="button secondary" onClick={() => setShowNewFolderDialog(true)}>
+                新しいフォルダ
+              </button>
+              <button className="button primary" onClick={() => fileInputRef.current?.click()}>
+                アップロード
+              </button>
+              <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilePicked} />
+            </>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -104,6 +127,14 @@ export default function FolderBrowser({
         <ul className="entry-list">
           {entries.map((entry) => (
             <li key={entry.name} className="entry-item">
+              {!isSelf && (
+                <input
+                  type="checkbox"
+                  className="entry-checkbox"
+                  checked={selectedNames.has(entry.name)}
+                  onChange={() => toggleSelected(entry.name)}
+                />
+              )}
               <button
                 className="entry-main"
                 onClick={() => entry.isDirectory && onNavigate(joinRelPath(currentPath, entry.name))}
@@ -114,8 +145,8 @@ export default function FolderBrowser({
                 {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
               </button>
               <div className="entry-actions">
-                {!entry.isDirectory && !isSelf && (
-                  <button className="button secondary small" onClick={() => onDownload(entry)}>
+                {!isSelf && (
+                  <button className="button secondary small" onClick={() => onDownload([entry])}>
                     ダウンロード
                   </button>
                 )}

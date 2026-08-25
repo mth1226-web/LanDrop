@@ -248,6 +248,13 @@ body {
   background: #20202e;
 }
 
+.entry-checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: #5878e8;
+}
+
 .entry-main {
   flex: 1;
   display: flex;

@@ -18,6 +18,7 @@ export interface ElectronAPI {
   renameEntry: (peerDeviceId: string, relPath: string, oldName: string, newName: string) => Promise<void>
   uploadFiles: (peerDeviceId: string, relPath: string, filePaths: string[]) => Promise<{ ok: boolean; error?: string }>
   downloadFile: (peerDeviceId: string, relPath: string, fileName: string, size: number) => Promise<{ ok: boolean }>
+  downloadEntries: (peerDeviceId: string, relPath: string, entries: BrowseEntry[]) => Promise<{ ok: boolean }>
 
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>

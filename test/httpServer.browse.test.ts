@@ -5,8 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { once } from 'node:events'
 import http from 'node:http'
+import extractZip from 'extract-zip'
 import { HttpServer } from '../src/main/httpServer'
-import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile } from '../src/main/transferClient'
+import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile, downloadZip } from '../src/main/transferClient'
 
 function getText(port: number, path: string): Promise<{ status: number; contentType: string | undefined; body: string }> {
   return new Promise((resolve, reject) => {
@@ -214,6 +215,82 @@ test('ルートパスへのGETでスマホ向けWeb UIのHTMLが返る', async (
     assert.match(response.contentType ?? '', /text\/html/)
     assert.match(response.body, /<!DOCTYPE html>/)
     assert.match(response.body, /テストPC/)
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('download-zipでフォルダ1つをzipとしてダウンロードできる(中身が再現される)', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.mkdirSync(path.join(folderA, 'sub-folder'))
+    fs.writeFileSync(path.join(folderA, 'sub-folder', 'a.txt'), 'hello-a')
+    fs.writeFileSync(path.join(folderA, 'sub-folder', 'b.txt'), 'hello-b')
+
+    const zipPath = path.join(os.tmpdir(), `landrop-zip-${Date.now()}.zip`)
+    await downloadZip({ address: '127.0.0.1', port, relPaths: [`${label}/sub-folder`], destPath: zipPath })
+
+    const extractDir = fs.mkdtempSync(path.join(os.tmpdir(), 'landrop-zip-extract-'))
+    await extractZip(zipPath, { dir: extractDir })
+
+    assert.equal(fs.readFileSync(path.join(extractDir, 'sub-folder', 'a.txt'), 'utf-8'), 'hello-a')
+    assert.equal(fs.readFileSync(path.join(extractDir, 'sub-folder', 'b.txt'), 'utf-8'), 'hello-b')
+
+    fs.rmSync(zipPath, { force: true })
+    fs.rmSync(extractDir, { recursive: true, force: true })
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('download-zipで複数ファイルを選択してまとめてダウンロードできる', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.writeFileSync(path.join(folderA, 'x.txt'), 'X')
+    fs.writeFileSync(path.join(folderA, 'y.txt'), 'Y')
+    fs.writeFileSync(path.join(folderA, 'z.txt'), 'Z')
+
+    const zipPath = path.join(os.tmpdir(), `landrop-multi-zip-${Date.now()}.zip`)
+    await downloadZip({
+      address: '127.0.0.1',
+      port,
+      relPaths: [`${label}/x.txt`, `${label}/z.txt`],
+      destPath: zipPath
+    })
+
+    const extractDir = fs.mkdtempSync(path.join(os.tmpdir(), 'landrop-multi-zip-extract-'))
+    await extractZip(zipPath, { dir: extractDir })
+
+    assert.equal(fs.readFileSync(path.join(extractDir, 'x.txt'), 'utf-8'), 'X')
+    assert.equal(fs.readFileSync(path.join(extractDir, 'z.txt'), 'utf-8'), 'Z')
+    assert.equal(fs.existsSync(path.join(extractDir, 'y.txt')), false)
+
+    fs.rmSync(zipPath, { force: true })
+    fs.rmSync(extractDir, { recursive: true, force: true })
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('download-zipは存在しないパスを含むと404になる', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    const zipPath = path.join(os.tmpdir(), `landrop-missing-zip-${Date.now()}.zip`)
+    await assert.rejects(() =>
+      downloadZip({ address: '127.0.0.1', port, relPaths: [`${label}/does-not-exist.txt`], destPath: zipPath })
+    )
   } finally {
     await server.stop()
     fs.rmSync(folderA, { recursive: true, force: true })

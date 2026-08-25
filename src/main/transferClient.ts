@@ -114,6 +114,40 @@ export function uploadFile(params: {
   })
 }
 
+function getToFile(params: {
+  address: string
+  port: number
+  path: string
+  destPath: string
+  onProgress?: (transferredBytes: number, totalBytes: number) => void
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: params.address, port: params.port, path: params.path, method: 'GET' }, (res) => {
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+        res.resume()
+        reject(new Error(`unexpected status ${res.statusCode}`))
+        return
+      }
+      const total = Number(res.headers['content-length'] ?? 0)
+      const writeStream = fs.createWriteStream(params.destPath)
+      let received = 0
+      res.on('data', (chunk: Buffer) => {
+        received += chunk.length
+        params.onProgress?.(received, total)
+      })
+      res.on('error', (err) => {
+        writeStream.destroy()
+        reject(err)
+      })
+      writeStream.on('error', reject)
+      writeStream.on('finish', resolve)
+      res.pipe(writeStream)
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
 export function downloadFile(params: {
   address: string
   port: number
@@ -121,37 +155,29 @@ export function downloadFile(params: {
   destPath: string
   onProgress?: (transferredBytes: number, totalBytes: number) => void
 }): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      {
-        host: params.address,
-        port: params.port,
-        path: `/api/download?path=${encodeURIComponent(params.relPath)}`,
-        method: 'GET'
-      },
-      (res) => {
-        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-          res.resume()
-          reject(new Error(`unexpected status ${res.statusCode}`))
-          return
-        }
-        const total = Number(res.headers['content-length'] ?? 0)
-        const writeStream = fs.createWriteStream(params.destPath)
-        let received = 0
-        res.on('data', (chunk: Buffer) => {
-          received += chunk.length
-          params.onProgress?.(received, total)
-        })
-        res.on('error', (err) => {
-          writeStream.destroy()
-          reject(err)
-        })
-        writeStream.on('error', reject)
-        writeStream.on('finish', resolve)
-        res.pipe(writeStream)
-      }
-    )
-    req.on('error', reject)
-    req.end()
+  return getToFile({
+    address: params.address,
+    port: params.port,
+    path: `/api/download?path=${encodeURIComponent(params.relPath)}`,
+    destPath: params.destPath,
+    onProgress: params.onProgress
+  })
+}
+
+/** 複数のファイル/フォルダをまとめてzipとしてダウンロードする */
+export function downloadZip(params: {
+  address: string
+  port: number
+  relPaths: string[]
+  destPath: string
+  onProgress?: (transferredBytes: number, totalBytes: number) => void
+}): Promise<void> {
+  const query = params.relPaths.map((p) => `path=${encodeURIComponent(p)}`).join('&')
+  return getToFile({
+    address: params.address,
+    port: params.port,
+    path: `/api/download-zip?${query}`,
+    destPath: params.destPath,
+    onProgress: params.onProgress
   })
 }

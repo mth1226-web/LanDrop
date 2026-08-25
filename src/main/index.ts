@@ -1,18 +1,18 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, Menu, MenuItemConstructorOptions } from 'electron'
-import { join, basename } from 'path'
+import { join, basename, posix } from 'path'
 import { existsSync, statSync, copyFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { hostname } from 'os'
 import { Discovery } from './discovery'
 import { HttpServer } from './httpServer'
 import { ActivityStore } from './activityStore'
-import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile } from './transferClient'
+import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile, downloadZip } from './transferClient'
 import { loadSettings, saveSettings } from './settings'
 import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
 import { getLanAddress } from './localNetwork'
-import type { AppSettings, UpdateState } from '../shared/types'
+import type { AppSettings, BrowseEntry, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let settings: AppSettings
@@ -369,6 +369,81 @@ function registerIpcHandlers(): void {
           address: peer.address,
           port: peer.httpPort,
           relPath: args.relPath,
+          destPath,
+          onProgress: (transferred) => {
+            activityStore.updateProgress(id, transferred)
+            broadcastActivity(id)
+          }
+        })
+        activityStore.complete(id)
+      } catch (err) {
+        activityStore.fail(id, String(err))
+      }
+      broadcastActivity(id)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'download-entries',
+    async (_event, args: { peerDeviceId: string; relPath: string; entries: BrowseEntry[] }) => {
+      const peer = findPeerOrThrow(args.peerDeviceId)
+
+      // ファイル1件だけの選択は、zip化せず直接ダウンロードする(高速・シンプル)
+      if (args.entries.length === 1 && !args.entries[0].isDirectory) {
+        const entry = args.entries[0]
+        const destPath = resolveUniquePath(settings.downloadFolder, entry.name)
+        const id = randomUUID()
+        activityStore.create({
+          id,
+          direction: 'download',
+          peerDeviceId: args.peerDeviceId,
+          peerDeviceName: peer.deviceName,
+          fileName: entry.name,
+          totalBytes: entry.size,
+          now: Date.now()
+        })
+        broadcastActivity(id)
+        try {
+          await downloadFile({
+            address: peer.address,
+            port: peer.httpPort,
+            relPath: posix.join(args.relPath, entry.name),
+            destPath,
+            onProgress: (transferred) => {
+              activityStore.updateProgress(id, transferred)
+              broadcastActivity(id)
+            }
+          })
+          activityStore.complete(id)
+        } catch (err) {
+          activityStore.fail(id, String(err))
+        }
+        broadcastActivity(id)
+        return { ok: true }
+      }
+
+      // 複数選択、またはフォルダを含む場合はzipにまとめてダウンロードする
+      const zipName =
+        args.entries.length === 1 ? `${args.entries[0].name}.zip` : `LanDrop-download-${Date.now()}.zip`
+      const destPath = resolveUniquePath(settings.downloadFolder, zipName)
+      const totalBytes = args.entries.reduce((sum, e) => sum + e.size, 0)
+      const id = randomUUID()
+      activityStore.create({
+        id,
+        direction: 'download',
+        peerDeviceId: args.peerDeviceId,
+        peerDeviceName: peer.deviceName,
+        fileName: zipName,
+        totalBytes,
+        now: Date.now()
+      })
+      broadcastActivity(id)
+      try {
+        await downloadZip({
+          address: peer.address,
+          port: peer.httpPort,
+          relPaths: args.entries.map((e) => posix.join(args.relPath, e.name)),
           destPath,
           onProgress: (transferred) => {
             activityStore.updateProgress(id, transferred)

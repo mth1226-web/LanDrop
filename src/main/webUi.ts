@@ -19,8 +19,11 @@ export function renderWebUiHtml(deviceName: string): string {
   nav.breadcrumb .sep { color: #5a5a70; margin: 0 2px; }
   .actions { display: flex; gap: 8px; padding: 10px 16px; }
   .actions button, .actions label { flex: 1; text-align: center; padding: 10px; border-radius: 8px; border: 1px solid #3a3a4c; background: #242432; color: #e8e8f0; font-size: 13px; }
+  .selection-bar { display: none; padding: 8px 16px; }
+  .selection-bar button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #5878e8; background: #5878e8; color: #fff; font-size: 13px; }
   ul.entries { list-style: none; margin: 0; padding: 8px 16px 24px; }
   li.entry { display: flex; align-items: center; gap: 8px; padding: 10px 4px; border-bottom: 1px solid #22222e; }
+  li.entry input[type=checkbox] { flex-shrink: 0; width: 18px; height: 18px; }
   li.entry .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
   li.entry .size { font-size: 11px; color: #7a7a90; margin-right: 4px; }
   li.entry a.download { font-size: 12px; color: #5878e8; text-decoration: none; padding: 4px 8px; }
@@ -39,20 +42,19 @@ export function renderWebUiHtml(deviceName: string): string {
   <input id="file-input" type="file" multiple />
   <button id="new-folder-btn">新しいフォルダ</button>
 </div>
+<div class="selection-bar" id="selection-bar">
+  <button id="download-selected-btn"></button>
+</div>
 <ul class="entries" id="entries"></ul>
 
 <script>
 (function () {
   var currentPath = '';
+  var currentEntries = [];
+  var selectedNames = {};
 
   function joinPath(base, name) {
     return base ? base + '/' + name : name;
-  }
-
-  function parentPath(path) {
-    var segs = path.split('/').filter(Boolean);
-    segs.pop();
-    return segs.join('/');
   }
 
   function formatBytes(bytes) {
@@ -82,7 +84,37 @@ export function renderWebUiHtml(deviceName: string): string {
     });
   }
 
+  function downloadUrl(names) {
+    if (names.length === 1) {
+      var only = currentEntries.filter(function (e) { return e.name === names[0]; })[0];
+      if (only && !only.isDirectory) {
+        return '/api/download?path=' + encodeURIComponent(joinPath(currentPath, only.name));
+      }
+    }
+    return '/api/download-zip?' + names.map(function (n) {
+      return 'path=' + encodeURIComponent(joinPath(currentPath, n));
+    }).join('&');
+  }
+
+  function updateSelectionBar() {
+    var names = Object.keys(selectedNames).filter(function (n) { return selectedNames[n]; });
+    var bar = document.getElementById('selection-bar');
+    var btn = document.getElementById('download-selected-btn');
+    if (names.length === 0) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = 'block';
+    btn.textContent = '選択した' + names.length + '件をダウンロード';
+    btn.onclick = function () {
+      window.location.href = downloadUrl(names);
+    };
+  }
+
   function renderEntries(entries) {
+    currentEntries = entries;
+    selectedNames = {};
+    updateSelectionBar();
     var el = document.getElementById('entries');
     el.innerHTML = '';
     if (entries.length === 0) {
@@ -96,26 +128,36 @@ export function renderWebUiHtml(deviceName: string): string {
       var li = document.createElement('li');
       li.className = 'entry';
 
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.onchange = function () {
+        selectedNames[entry.name] = checkbox.checked;
+        updateSelectionBar();
+      };
+      li.appendChild(checkbox);
+
       var name = document.createElement('span');
       name.className = 'name';
       name.textContent = (entry.isDirectory ? '\\uD83D\\uDCC1 ' : '\\uD83D\\uDCC4 ') + entry.name;
+      if (entry.isDirectory) {
+        name.style.cursor = 'pointer';
+        name.onclick = function () { navigate(joinPath(currentPath, entry.name)); };
+      }
       li.appendChild(name);
 
-      if (entry.isDirectory) {
-        li.onclick = function () { navigate(joinPath(currentPath, entry.name)); };
-        li.style.cursor = 'pointer';
-      } else {
+      if (!entry.isDirectory) {
         var size = document.createElement('span');
         size.className = 'size';
         size.textContent = formatBytes(entry.size);
         li.appendChild(size);
-
-        var a = document.createElement('a');
-        a.className = 'download';
-        a.textContent = 'DL';
-        a.href = '/api/download?path=' + encodeURIComponent(joinPath(currentPath, entry.name));
-        li.appendChild(a);
       }
+
+      var a = document.createElement('a');
+      a.className = 'download';
+      a.textContent = 'DL';
+      a.href = downloadUrl([entry.name]);
+      li.appendChild(a);
+
       el.appendChild(li);
     });
   }
