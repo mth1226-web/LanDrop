@@ -29,6 +29,33 @@ body {
   border-bottom: 1px solid #2a2a38;
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e0a030;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.update-current-version {
+  font-size: 11px;
+  color: #7a7a90;
+  margin: 0 0 8px;
+}
+
+.update-status {
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
 .app-header h1 {
   font-size: 18px;
   margin: 0;

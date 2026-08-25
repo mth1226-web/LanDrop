@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppSettings, BrowseEntry, Peer, TransferActivity } from '../shared/types'
+import type { AppSettings, BrowseEntry, Peer, TransferActivity, UpdateState } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadFile: (peerDeviceId: string, relPath: string, fileName: string, size: number): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('download-file', { peerDeviceId, relPath, fileName, size }),
 
+  checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
+  applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),
+
   onPeersChanged: (callback: (peers: Peer[]) => void) => {
     const handler = (_: unknown, peers: Peer[]): void => callback(peers)
     ipcRenderer.on('peers-changed', handler)
@@ -39,5 +42,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (): void => callback()
     ipcRenderer.on('peer-uploaded', handler)
     return () => ipcRenderer.removeListener('peer-uploaded', handler)
+  },
+  onUpdateState: (callback: (state: UpdateState) => void) => {
+    const handler = (_: unknown, state: UpdateState): void => callback(state)
+    ipcRenderer.on('update-state', handler)
+    return () => ipcRenderer.removeListener('update-state', handler)
   }
 })

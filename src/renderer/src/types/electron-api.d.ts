@@ -1,4 +1,4 @@
-import type { AppSettings, BrowseEntry, Peer, TransferActivity } from '../../../shared/types'
+import type { AppSettings, BrowseEntry, Peer, TransferActivity, UpdateState } from '../../../shared/types'
 
 export interface ElectronAPI {
   getPathForFile: (file: File) => string
@@ -19,9 +19,13 @@ export interface ElectronAPI {
   uploadFiles: (peerDeviceId: string, relPath: string, filePaths: string[]) => Promise<{ ok: boolean; error?: string }>
   downloadFile: (peerDeviceId: string, relPath: string, fileName: string, size: number) => Promise<{ ok: boolean }>
 
+  checkForUpdate: () => Promise<void>
+  applyUpdate: () => Promise<void>
+
   onPeersChanged: (callback: (peers: Peer[]) => void) => () => void
   onActivityUpdated: (callback: (activity: TransferActivity) => void) => () => void
   onPeerUploaded: (callback: () => void) => () => void
+  onUpdateState: (callback: (state: UpdateState) => void) => () => void
 }
 
 declare global {

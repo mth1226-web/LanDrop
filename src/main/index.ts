@@ -10,7 +10,8 @@ import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downlo
 import { loadSettings, saveSettings } from './settings'
 import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
-import type { AppSettings } from '../shared/types'
+import { checkForUpdate, downloadAndApplyUpdate } from './updater'
+import type { AppSettings, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let settings: AppSettings
@@ -30,6 +31,43 @@ function sendToRenderer(channel: string, ...args: unknown[]): void {
 function broadcastActivity(id: string): void {
   const activity = activityStore.get(id)
   if (activity) sendToRenderer('activity-updated', activity)
+}
+
+function sendUpdateState(state: UpdateState): void {
+  sendToRenderer('update-state', state)
+}
+
+async function checkForUpdateAndNotify(): Promise<void> {
+  sendUpdateState({ phase: 'checking' })
+  try {
+    const result = await checkForUpdate()
+    sendUpdateState({
+      phase: result.updateAvailable ? 'available' : 'up-to-date',
+      currentVersion: result.currentVersion,
+      latestVersion: result.latestVersion
+    })
+  } catch (err) {
+    sendUpdateState({ phase: 'error', errorMessage: String(err) })
+  }
+}
+
+async function applyUpdateAndNotify(): Promise<void> {
+  if (process.platform !== 'win32') {
+    sendUpdateState({ phase: 'unsupported-platform' })
+    return
+  }
+  try {
+    const result = await checkForUpdate()
+    if (!result.updateAvailable || !result.asset) {
+      sendUpdateState({ phase: 'up-to-date', currentVersion: result.currentVersion, latestVersion: result.latestVersion })
+      return
+    }
+    sendUpdateState({ phase: 'downloading', percent: 0, latestVersion: result.latestVersion })
+    await downloadAndApplyUpdate(result.asset, (percent) => sendUpdateState({ phase: 'downloading', percent }))
+    // 正常系はここでdownloadAndApplyUpdate内のapp.quit()によりプロセスが終了するため到達しない
+  } catch (err) {
+    sendUpdateState({ phase: 'error', errorMessage: String(err) })
+  }
 }
 
 function createWindow(): BrowserWindow {
@@ -100,6 +138,11 @@ function buildApplicationMenu(): void {
     {
       label: 'ヘルプ',
       submenu: [
+        {
+          label: 'アップデートを確認...',
+          click: () => void checkForUpdateAndNotify()
+        },
+        { type: 'separator' },
         {
           label: 'LanDropについて',
           click: () => {
@@ -335,6 +378,9 @@ function registerIpcHandlers(): void {
       return { ok: true }
     }
   )
+
+  ipcMain.handle('check-for-update', () => checkForUpdateAndNotify())
+  ipcMain.handle('apply-update', () => applyUpdateAndNotify())
 }
 
 function loadOrInitSettings(): AppSettings {

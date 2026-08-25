@@ -30,28 +30,44 @@ npm run package    # electron-builderでの配布用パッケージ作成（要W
 
 この開発環境では`electron-builder`が内部で使う`winCodeSign`パッケージの展開にシンボリックリンク作成権限が必要で、
 一般ユーザー権限のままだと失敗する（Windowsの「開発者モード」を有効にするか管理者権限が必要）。そのため、
-electron-builderを使わずに「ビルド済みファイル一式 + Electron本体」をそのままコピーして動かす方式を使っている。
+electron-builderを使わずに、Electron本体の`electron.exe`を`LanDrop.exe`にリネームし、ビルド済みアプリを
+`resources/app`配下に配置する(Electron自体の標準規約: `resources/app`があればそれを自動的にロードする)方式で、
+本物の単体exeとして動く配布物を作っている。
 
-手順（このリポジトリのルートで実行）:
+手順（このリポジトリのルートで実行、PowerShell）:
 ```powershell
 npm run build
 
-# ビルド済みファイル(out/)とpackage.json、Electron本体をひとつのフォルダにまとめる
-mkdir dist-portable\LanDrop-Windows\node_modules
-copy package.json dist-portable\LanDrop-Windows\
-xcopy /E /I out dist-portable\LanDrop-Windows\out
-xcopy /E /I node_modules\electron dist-portable\LanDrop-Windows\node_modules\electron
+$dest = "dist-portable\LanDrop-Windows"
+Remove-Item dist-portable -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force "$dest\resources\app" | Out-Null
+Copy-Item node_modules\electron\dist\* $dest -Recurse
+Rename-Item "$dest\electron.exe" "LanDrop.exe"
+Copy-Item package.json "$dest\resources\app\"
+Copy-Item out "$dest\resources\app\out" -Recurse
 
-# dist-portable\LanDrop-Windows\起動.bat を作成(内容は1行: electron.exeを%~dp0付きで起動)
-# フォルダごとzip化して他のPCにコピーし、「起動.bat」をダブルクリックすれば動く
-Compress-Archive -Path dist-portable\LanDrop-Windows -DestinationPath LanDrop-Windows.zip
+Compress-Archive -Path $dest -DestinationPath dist-portable\LanDrop-Windows.zip
 ```
 
-配布先のPCでは、zipを展開して`起動.bat`をダブルクリックするだけで起動する（インストール不要、npm/Node.js不要）。
-ソースを変更した場合はこの手順をやり直して新しいzipを作り直す必要がある(自動更新の仕組みは無い)。
+配布先のPCでは、zipを展開して`LanDrop.exe`をダブルクリックするだけで起動する（インストール不要、npm/Node.js不要）。
 
-もしWindowsの開発者モードが有効にできる環境なら、上記の代わりに`npm run package`（electron-builder）で
-ちゃんとしたポータブルexe/インストーラーを作れる（`package.json`の`build.win.target`は`portable`に設定済み）。
+## アップデート機能（Windows）
+
+ヘッダーの「アップデート」ボタン（またはメニューの ヘルプ→アップデートを確認）から、GitHub Releases
+(`https://github.com/mth1226-web/LanDrop/releases/latest`)の最新版をワンクリックでダウンロード・展開・
+入れ替え・再起動できる。仕組みは`src/main/updater.ts`:
+
+1. GitHub Releases APIで最新タグ・アセット(`LanDrop-Windows.zip`)情報を取得し、`package.json`の`version`と比較
+2. 新しければzipをダウンロードし、`extract-zip`で一時フォルダに展開
+3. 実行中の`LanDrop.exe`が終了するのを待ってから、展開した新しいファイル一式を`robocopy`で現在のインストール
+   フォルダ(実行中のexeがあるフォルダ)に上書きし、新しいexeを起動する`.bat`をバックグラウンドで起動してから
+   アプリ自身は終了する
+
+新しいバージョンを配布するときは、上記の配布手順でzipを作り直し、`package.json`の`version`を上げてから
+`gh release create v<version> dist-portable\LanDrop-Windows.zip --title ... --notes ...`でGitHub Releaseを
+作成する（zipのアセット名は必ず`LanDrop-Windows.zip`にすること。updaterがこの名前で検索している）。
+
+この自動更新は現時点でWindows版のみ対応。Mac版は下記の手順で手動ビルドする。
 
 ## 仕組み
 

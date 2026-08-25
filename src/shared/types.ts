@@ -51,3 +51,20 @@ export interface AppSettings {
   sharedFolders: string[]
   downloadFolder: string
 }
+
+export type UpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'downloading'
+  | 'error'
+  | 'unsupported-platform'
+
+export interface UpdateState {
+  phase: UpdatePhase
+  percent?: number
+  currentVersion?: string
+  latestVersion?: string
+  errorMessage?: string
+}

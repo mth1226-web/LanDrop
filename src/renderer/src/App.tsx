@@ -4,6 +4,7 @@ import PeerList from './components/PeerList'
 import FolderBrowser from './components/FolderBrowser'
 import ActivityList from './components/ActivityList'
 import SettingsDialog from './components/SettingsDialog'
+import UpdateDialog from './components/UpdateDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
 import type { BrowseEntry, Peer } from '../../shared/types'
 
@@ -15,6 +16,7 @@ export default function App(): JSX.Element {
   const currentPath = useAppStore((s) => s.currentPath)
   const entries = useAppStore((s) => s.entries)
   const isLoadingEntries = useAppStore((s) => s.isLoadingEntries)
+  const updateState = useAppStore((s) => s.updateState)
 
   const setPeers = useAppStore((s) => s.setPeers)
   const setSettings = useAppStore((s) => s.setSettings)
@@ -23,8 +25,10 @@ export default function App(): JSX.Element {
   const setCurrentPath = useAppStore((s) => s.setCurrentPath)
   const setEntries = useAppStore((s) => s.setEntries)
   const setLoadingEntries = useAppStore((s) => s.setLoadingEntries)
+  const setUpdateState = useAppStore((s) => s.setUpdateState)
 
   const [showSettings, setShowSettings] = useState(false)
+  const [showUpdate, setShowUpdate] = useState(false)
 
   useEffect(() => {
     window.electronAPI.getPeers().then(setPeers)
@@ -32,10 +36,13 @@ export default function App(): JSX.Element {
     const unsubscribePeers = window.electronAPI.onPeersChanged(setPeers)
     const unsubscribeActivity = window.electronAPI.onActivityUpdated(upsertActivity)
     const unsubscribeUploaded = window.electronAPI.onPeerUploaded(() => reloadEntries())
+    const unsubscribeUpdate = window.electronAPI.onUpdateState(setUpdateState)
+    void window.electronAPI.checkForUpdate()
     return () => {
       unsubscribePeers()
       unsubscribeActivity()
       unsubscribeUploaded()
+      unsubscribeUpdate()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -128,13 +135,26 @@ export default function App(): JSX.Element {
     if (updated) setSettings(updated)
   }
 
+  function handleCheckForUpdate(): void {
+    void window.electronAPI.checkForUpdate()
+  }
+
+  function handleApplyUpdate(): void {
+    void window.electronAPI.applyUpdate()
+  }
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>LanDrop</h1>
-        <button className="button secondary" onClick={() => setShowSettings(true)}>
-          設定
-        </button>
+        <div className="app-header-actions">
+          <button className="button secondary" onClick={() => setShowUpdate(true)}>
+            アップデート{updateState.phase === 'available' && <span className="update-dot" />}
+          </button>
+          <button className="button secondary" onClick={() => setShowSettings(true)}>
+            設定
+          </button>
+        </div>
       </header>
 
       <FirewallHintBanner />
@@ -175,6 +195,15 @@ export default function App(): JSX.Element {
           onOpenFolder={handleOpenFolder}
           onChooseDownloadFolder={handleChooseDownloadFolder}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showUpdate && (
+        <UpdateDialog
+          updateState={updateState}
+          onCheck={handleCheckForUpdate}
+          onApply={handleApplyUpdate}
+          onClose={() => setShowUpdate(false)}
         />
       )}
     </div>

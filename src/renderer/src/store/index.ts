@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import type { AppSettings, BrowseEntry, Peer, TransferActivity } from '../../../shared/types'
+import type { AppSettings, BrowseEntry, Peer, TransferActivity, UpdateState } from '../../../shared/types'
 
 interface AppState {
   peers: Peer[]
@@ -10,6 +10,7 @@ interface AppState {
   currentPath: string
   entries: BrowseEntry[]
   isLoadingEntries: boolean
+  updateState: UpdateState
 
   setPeers: (peers: Peer[]) => void
   setSettings: (settings: AppSettings) => void
@@ -18,6 +19,7 @@ interface AppState {
   setCurrentPath: (path: string) => void
   setEntries: (entries: BrowseEntry[]) => void
   setLoadingEntries: (loading: boolean) => void
+  setUpdateState: (state: UpdateState) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -29,6 +31,7 @@ export const useAppStore = create<AppState>()(
     currentPath: '',
     entries: [],
     isLoadingEntries: false,
+    updateState: { phase: 'idle' },
 
     setPeers: (peers) =>
       set((s) => {
@@ -59,6 +62,10 @@ export const useAppStore = create<AppState>()(
     setLoadingEntries: (loading) =>
       set((s) => {
         s.isLoadingEntries = loading
+      }),
+    setUpdateState: (state) =>
+      set((s) => {
+        s.updateState = state
       })
   }))
 )
