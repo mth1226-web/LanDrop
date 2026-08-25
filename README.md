@@ -23,20 +23,56 @@ npm run dev        # 開発モードで起動
 npm run typecheck  # 型チェック
 npm run test       # ユニットテスト（node --test、実ソケット/実HTTPサーバーでプロトコルを検証）
 npm run build      # ビルド
-npm run package    # 配布用パッケージを作成（electron-builder）
+npm run package    # electron-builderでの配布用パッケージ作成（要Windows開発者モード。下記参照）
 ```
+
+## 他のPCへの配布（Windows）
+
+この開発環境では`electron-builder`が内部で使う`winCodeSign`パッケージの展開にシンボリックリンク作成権限が必要で、
+一般ユーザー権限のままだと失敗する（Windowsの「開発者モード」を有効にするか管理者権限が必要）。そのため、
+electron-builderを使わずに「ビルド済みファイル一式 + Electron本体」をそのままコピーして動かす方式を使っている。
+
+手順（このリポジトリのルートで実行）:
+```powershell
+npm run build
+
+# ビルド済みファイル(out/)とpackage.json、Electron本体をひとつのフォルダにまとめる
+mkdir dist-portable\LanDrop-Windows\node_modules
+copy package.json dist-portable\LanDrop-Windows\
+xcopy /E /I out dist-portable\LanDrop-Windows\out
+xcopy /E /I node_modules\electron dist-portable\LanDrop-Windows\node_modules\electron
+
+# dist-portable\LanDrop-Windows\起動.bat を作成(内容は1行: electron.exeを%~dp0付きで起動)
+# フォルダごとzip化して他のPCにコピーし、「起動.bat」をダブルクリックすれば動く
+Compress-Archive -Path dist-portable\LanDrop-Windows -DestinationPath LanDrop-Windows.zip
+```
+
+配布先のPCでは、zipを展開して`起動.bat`をダブルクリックするだけで起動する（インストール不要、npm/Node.js不要）。
+ソースを変更した場合はこの手順をやり直して新しいzipを作り直す必要がある(自動更新の仕組みは無い)。
+
+もしWindowsの開発者モードが有効にできる環境なら、上記の代わりに`npm run package`（electron-builder）で
+ちゃんとしたポータブルexe/インストーラーを作れる（`package.json`の`build.win.target`は`portable`に設定済み）。
 
 ## 仕組み
 
 - **端末発見**: 固定UDPポート(48737)へブロードキャストする自前のannounce/goodbyeメッセージのみで実現（mDNS/Bonjour等の追加依存なし）。ゲストWi-Fi等でクライアント分離（AP isolation）が有効なネットワークでは動作しません。
 - **共有フォルダの参照・操作**: 各インスタンスがローカルにHTTPサーバーを立て、共有フォルダ配下に対する一覧取得・アップロード・ダウンロード・フォルダ作成・リネームのAPIを提供する。すべての操作は共有フォルダのルートより外に出られないようパス検証している（パストラバーサル対策）。承諾ダイアログ等は無く、共有フォルダとして設定した時点で同じLAN上の他PCから読み書き可能になる。
 
-## macOSでの最終確認について
+## 他のPCへの配布（Mac）
 
-macOS 15 (Sequoia)以降は、アプリがLAN上の他端末にアクセスする際に「ローカルネットワークへのアクセス」許可ダイアログが表示されます。このダイアログは**未署名の`electron-vite dev`実行では安定して発火しないことがある**ため、Mac実機での最終確認時は以下のようにad-hoc署名を挟んでからパッケージを起動してください（Apple Developer登録や公証は個人利用の範囲では不要です）。
+Windows上のこの環境にはmacOS版のElectronバイナリが無く、Mac向けビルドはWindowsからは作れない。
+**Mac実機を用意し、そのMac上で**このリポジトリを`git clone`してから以下を実行する。
 
 ```bash
+npm install
 npm run package
+# dist/mac/LanDrop.app ができる（package.jsonのbuild.mac.targetでdir+zipを指定済み）
+
+# 署名なしのアプリはmacOSのGatekeeperに弾かれるため、ad-hoc署名を行う
 codesign --force --deep --sign - dist/mac/LanDrop.app
-open dist/mac/LanDrop.app
 ```
+
+`dist/mac/LanDrop.app`を他のMacにコピー(またはdist/mac-arm64/zipで固めたものを配布)すれば、
+初回起動時は右クリック→「開く」でGatekeeperの警告を回避して起動できる。
+
+macOS 15 (Sequoia)以降は、アプリがLAN上の他端末にアクセスする際に「ローカルネットワークへのアクセス」許可ダイアログが表示される。このダイアログは**未署名の`electron-vite dev`実行では安定して発火しないことがある**ため、上記のad-hoc署名を経たビルドで確認すること（Apple Developer登録や公証は個人利用の範囲では不要）。
