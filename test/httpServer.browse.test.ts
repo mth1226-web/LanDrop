@@ -4,13 +4,32 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { once } from 'node:events'
+import http from 'node:http'
 import { HttpServer } from '../src/main/httpServer'
 import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile } from '../src/main/transferClient'
+
+function getText(port: number, path: string): Promise<{ status: number; contentType: string | undefined; body: string }> {
+  return new Promise((resolve, reject) => {
+    http
+      .get({ host: '127.0.0.1', port, path }, (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c))
+        res.on('end', () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            contentType: res.headers['content-type'],
+            body: Buffer.concat(chunks).toString('utf-8')
+          })
+        )
+      })
+      .on('error', reject)
+  })
+}
 
 // 実httpサーバーを1台localhostに立て、複数共有フォルダのbrowse/upload/download/mkdir/renameを検証する
 
 function makeServer(sharedFolders: string[]): { server: HttpServer; sharedFolders: string[] } {
-  const server = new HttpServer({ getSharedFolders: () => sharedFolders })
+  const server = new HttpServer({ getSharedFolders: () => sharedFolders, getDeviceName: () => 'テストPC' })
   return { server, sharedFolders }
 }
 
@@ -179,6 +198,22 @@ test('パストラバーサルを試みるdownloadは404になる', async () => 
         destPath
       })
     )
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('ルートパスへのGETでスマホ向けWeb UIのHTMLが返る', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  try {
+    const response = await getText(port, '/')
+    assert.equal(response.status, 200)
+    assert.match(response.contentType ?? '', /text\/html/)
+    assert.match(response.body, /<!DOCTYPE html>/)
+    assert.match(response.body, /テストPC/)
   } finally {
     await server.stop()
     fs.rmSync(folderA, { recursive: true, force: true })

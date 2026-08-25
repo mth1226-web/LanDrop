@@ -21,6 +21,7 @@ export interface ElectronAPI {
 
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>
+  getLanUrl: () => Promise<string | null>
 
   onPeersChanged: (callback: (peers: Peer[]) => void) => () => void
   onActivityUpdated: (callback: (activity: TransferActivity) => void) => () => void

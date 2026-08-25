@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AppSettings } from '../../../shared/types'
+import PhoneAccessCard from './PhoneAccessCard'
 
 interface Props {
   settings: AppSettings
@@ -84,6 +85,8 @@ export default function SettingsDialog({
             </button>
           </div>
         </label>
+
+        <PhoneAccessCard />
 
         <div className="modal-actions">
           <button className="button secondary" onClick={onClose}>

@@ -6,6 +6,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { browseShared, resolveSharedEntry, resolveSafePath, createFolder, renameEntry, isValidEntryName } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
+import { renderWebUiHtml } from './webUi'
 import type { BrowseEntry } from '../shared/types'
 
 const JSON_BODY_LIMIT_BYTES = 1_000_000
@@ -25,10 +26,12 @@ export declare interface HttpServer {
 export class HttpServer extends EventEmitter {
   private readonly server: http.Server
   private readonly getSharedFolders: () => string[]
+  private readonly getDeviceName: () => string
 
-  constructor(options: { getSharedFolders: () => string[] }) {
+  constructor(options: { getSharedFolders: () => string[]; getDeviceName: () => string }) {
     super()
     this.getSharedFolders = options.getSharedFolders
+    this.getDeviceName = options.getDeviceName
     this.server = http.createServer((req, res) => this.handleRequest(req, res))
   }
 
@@ -55,6 +58,9 @@ export class HttpServer extends EventEmitter {
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = new URL(req.url ?? '/', 'http://localhost')
     try {
+      if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+        return this.handleWebUi(res)
+      }
       if (req.method === 'GET' && url.pathname === '/api/browse') return this.handleBrowse(res, url)
       if (req.method === 'GET' && url.pathname === '/api/download') return this.handleDownload(res, url)
       if (req.method === 'POST' && url.pathname === '/api/upload') return void this.handleUpload(req, res, url)
@@ -95,6 +101,12 @@ export class HttpServer extends EventEmitter {
       })
       req.on('error', reject)
     })
+  }
+
+  private handleWebUi(res: http.ServerResponse): void {
+    const html = renderWebUiHtml(this.getDeviceName())
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    res.end(html)
   }
 
   private handleBrowse(res: http.ServerResponse, url: URL): void {

@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),
+  getLanUrl: (): Promise<string | null> => ipcRenderer.invoke('get-lan-url'),
 
   onPeersChanged: (callback: (peers: Peer[]) => void) => {
     const handler = (_: unknown, peers: Peer[]): void => callback(peers)

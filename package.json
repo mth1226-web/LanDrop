@@ -1,6 +1,6 @@
 {
   "name": "landrop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LanDrop - 同一LAN内のPC同士でドラッグ&ドロップだけでファイルを送受信するアプリ",
   "main": "out/main/index.js",
   "scripts": {
@@ -44,11 +44,13 @@
   "dependencies": {
     "extract-zip": "^2.0.1",
     "immer": "^10.1.1",
+    "qrcode": "^1.5.4",
     "zustand": "^4.5.4"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@types/node": "^20.14.8",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

@@ -11,12 +11,14 @@ import { loadSettings, saveSettings } from './settings'
 import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
+import { getLanAddress } from './localNetwork'
 import type { AppSettings, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let settings: AppSettings
 let httpServer: HttpServer | null = null
 let discovery: Discovery | null = null
+let ownHttpPort = 0
 
 const activityStore = new ActivityStore()
 
@@ -161,13 +163,16 @@ function buildApplicationMenu(): void {
 }
 
 async function startNetworking(): Promise<void> {
-  httpServer = new HttpServer({ getSharedFolders: () => settings.sharedFolders })
-  const httpPort = await httpServer.start(0)
+  httpServer = new HttpServer({
+    getSharedFolders: () => settings.sharedFolders,
+    getDeviceName: () => settings.deviceName
+  })
+  ownHttpPort = await httpServer.start(0)
 
   discovery = new Discovery({
     deviceId: settings.deviceId,
     deviceName: settings.deviceName,
-    getHttpPort: () => httpPort
+    getHttpPort: () => ownHttpPort
   })
 
   httpServer.on('upload-received', (payload) => {
@@ -381,6 +386,11 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('check-for-update', () => checkForUpdateAndNotify())
   ipcMain.handle('apply-update', () => applyUpdateAndNotify())
+
+  ipcMain.handle('get-lan-url', () => {
+    const address = getLanAddress()
+    return address && ownHttpPort ? `http://${address}:${ownHttpPort}/` : null
+  })
 }
 
 function loadOrInitSettings(): AppSettings {
