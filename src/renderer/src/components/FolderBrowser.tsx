@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BrowseEntry } from '../../../shared/types'
 import { joinRelPath, pathSegments } from '../store'
-import { formatBytes } from '../utils/format'
+import { formatBytes, hexToRgba } from '../utils/format'
 import InputDialog from './InputDialog'
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   entries: BrowseEntry[]
   isLoading: boolean
   isSelf: boolean
+  accentColor?: string
   onNavigate: (path: string) => void
   onUploadFiles: (filePaths: string[]) => void
   onCreateFolder: (name: string) => void
@@ -24,6 +25,7 @@ export default function FolderBrowser({
   entries,
   isLoading,
   isSelf,
+  accentColor,
   onNavigate,
   onUploadFiles,
   onCreateFolder,
@@ -71,9 +73,15 @@ export default function FolderBrowser({
 
   const selectedEntries = entries.filter((e) => selectedNames.has(e.name))
 
+  const selfStyle: React.CSSProperties =
+    isSelf && accentColor
+      ? { borderColor: accentColor, borderStyle: 'solid', backgroundColor: hexToRgba(accentColor, 0.06) }
+      : {}
+
   return (
     <div
       className={isDragOver ? 'panel folder-browser drag-over' : 'panel folder-browser'}
+      style={selfStyle}
       onDragOver={(e) => {
         e.preventDefault()
         if (!isAtRoot) setIsDragOver(true)

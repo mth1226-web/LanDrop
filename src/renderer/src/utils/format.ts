@@ -16,3 +16,14 @@ const STATUS_LABELS: Record<ActivityStatus, string> = {
 export function statusLabel(status: ActivityStatus): string {
   return STATUS_LABELS[status]
 }
+
+/** "#rrggbb" 形式のHEXカラーを "rgba(r, g, b, alpha)" に変換する。不正な形式なら透明に近いグレーを返す */
+export function hexToRgba(hex: string, alpha: number): string {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex)
+  if (!match) return `rgba(120, 120, 140, ${alpha})`
+  const value = parseInt(match[1], 16)
+  const r = (value >> 16) & 255
+  const g = (value >> 8) & 255
+  const b = value & 255
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}

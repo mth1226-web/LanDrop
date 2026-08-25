@@ -135,6 +135,11 @@ export default function App(): JSX.Element {
     if (updated) setSettings(updated)
   }
 
+  async function handleChangeAccentColor(color: string): Promise<void> {
+    const updated = await window.electronAPI.setAccentColor(color)
+    setSettings(updated)
+  }
+
   function handleCheckForUpdate(): void {
     void window.electronAPI.checkForUpdate()
   }
@@ -169,6 +174,7 @@ export default function App(): JSX.Element {
               entries={entries}
               isLoading={isLoadingEntries}
               isSelf={isSelf}
+              accentColor={settings?.accentColor}
               onNavigate={setCurrentPath}
               onUploadFiles={handleUploadFiles}
               onCreateFolder={handleCreateFolder}
@@ -194,6 +200,7 @@ export default function App(): JSX.Element {
           onRemoveSharedFolder={handleRemoveSharedFolder}
           onOpenFolder={handleOpenFolder}
           onChooseDownloadFolder={handleChooseDownloadFolder}
+          onChangeAccentColor={handleChangeAccentColor}
           onClose={() => setShowSettings(false)}
         />
       )}

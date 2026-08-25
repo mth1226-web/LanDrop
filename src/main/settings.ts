@@ -3,6 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { AppSettings } from '../shared/types'
 
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
+
 export function loadSettings(settingsFilePath: string, defaults: AppSettings): AppSettings {
   try {
     const raw = fs.readFileSync(settingsFilePath, 'utf-8')
@@ -17,7 +19,11 @@ export function loadSettings(settingsFilePath: string, defaults: AppSettings): A
       downloadFolder:
         typeof parsed.downloadFolder === 'string' && parsed.downloadFolder
           ? parsed.downloadFolder
-          : defaults.downloadFolder
+          : defaults.downloadFolder,
+      accentColor:
+        typeof parsed.accentColor === 'string' && HEX_COLOR_PATTERN.test(parsed.accentColor)
+          ? parsed.accentColor
+          : defaults.accentColor
     }
   } catch {
     return defaults

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPeers: (): Promise<Peer[]> => ipcRenderer.invoke('get-peers'),
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('get-settings'),
   setSettings: (settings: { deviceName: string }): Promise<AppSettings> => ipcRenderer.invoke('set-settings', settings),
+  setAccentColor: (color: string): Promise<AppSettings> => ipcRenderer.invoke('set-accent-color', color),
   chooseSharedFolder: (): Promise<AppSettings | null> => ipcRenderer.invoke('choose-shared-folder'),
   addSharedFolders: (paths: string[]): Promise<AppSettings> => ipcRenderer.invoke('add-shared-folders', paths),
   removeSharedFolder: (folderPath: string): Promise<AppSettings> => ipcRenderer.invoke('remove-shared-folder', folderPath),

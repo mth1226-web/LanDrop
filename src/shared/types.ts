@@ -50,6 +50,7 @@ export interface AppSettings {
   deviceName: string
   sharedFolders: string[]
   downloadFolder: string
+  accentColor: string
 }
 
 export type UpdatePhase =

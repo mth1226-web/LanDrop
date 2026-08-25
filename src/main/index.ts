@@ -227,6 +227,13 @@ function registerIpcHandlers(): void {
     return settings
   })
 
+  ipcMain.handle('set-accent-color', (_event, color: string) => {
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) return settings
+    settings = { ...settings, accentColor: color }
+    saveSettings(getSettingsFilePath(), settings)
+    return settings
+  })
+
   ipcMain.handle('choose-shared-folder', async () => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'multiSelections'] })
@@ -475,7 +482,8 @@ function loadOrInitSettings(): AppSettings {
     deviceId: randomUUID(),
     deviceName: hostname(),
     sharedFolders: [join(app.getPath('documents'), 'LanDrop共有')],
-    downloadFolder: app.getPath('downloads')
+    downloadFolder: app.getPath('downloads'),
+    accentColor: '#4caf6a'
   }
   const loaded = loadSettings(filePath, defaults)
   if (isFirstRun) saveSettings(filePath, loaded)

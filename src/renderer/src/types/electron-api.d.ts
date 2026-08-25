@@ -6,6 +6,7 @@ export interface ElectronAPI {
   getPeers: () => Promise<Peer[]>
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: { deviceName: string }) => Promise<AppSettings>
+  setAccentColor: (color: string) => Promise<AppSettings>
   chooseSharedFolder: () => Promise<AppSettings | null>
   addSharedFolders: (paths: string[]) => Promise<AppSettings>
   removeSharedFolder: (folderPath: string) => Promise<AppSettings>

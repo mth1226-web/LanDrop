@@ -540,3 +540,34 @@ body {
   border-color: #5878e8;
   background: #202436;
 }
+
+.accent-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.accent-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.accent-swatch.selected {
+  border-color: #e8e8f0;
+}
+
+.accent-color-picker {
+  width: 32px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #3a3a4c;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}

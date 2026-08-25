@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { AppSettings } from '../../../shared/types'
 import PhoneAccessCard from './PhoneAccessCard'
 
+const ACCENT_COLOR_PRESETS = ['#4caf6a', '#5878e8', '#e0a030', '#d05a5a', '#a05ae0', '#30b8c0', '#e05a9c']
+
 interface Props {
   settings: AppSettings
   onSaveDeviceName: (deviceName: string) => void
@@ -10,6 +12,7 @@ interface Props {
   onRemoveSharedFolder: (folderPath: string) => void
   onOpenFolder: (folderPath: string) => void
   onChooseDownloadFolder: () => void
+  onChangeAccentColor: (color: string) => void
   onClose: () => void
 }
 
@@ -21,6 +24,7 @@ export default function SettingsDialog({
   onRemoveSharedFolder,
   onOpenFolder,
   onChooseDownloadFolder,
+  onChangeAccentColor,
   onClose
 }: Props): JSX.Element {
   const [deviceName, setDeviceName] = useState(settings.deviceName)
@@ -85,6 +89,27 @@ export default function SettingsDialog({
             </button>
           </div>
         </label>
+
+        <div className="field">
+          <span>自分のPCのフォルダ表示エリアの色</span>
+          <div className="accent-color-row">
+            {ACCENT_COLOR_PRESETS.map((color) => (
+              <button
+                key={color}
+                className={color === settings.accentColor ? 'accent-swatch selected' : 'accent-swatch'}
+                style={{ backgroundColor: color }}
+                aria-label={color}
+                onClick={() => onChangeAccentColor(color)}
+              />
+            ))}
+            <input
+              type="color"
+              className="accent-color-picker"
+              value={settings.accentColor}
+              onChange={(e) => onChangeAccentColor(e.target.value)}
+            />
+          </div>
+        </div>
 
         <PhoneAccessCard />
 
