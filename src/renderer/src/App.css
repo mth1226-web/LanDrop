@@ -431,6 +431,23 @@ body {
   width: 420px;
 }
 
+.network-interface-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.network-interface-row select {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #3a3a4c;
+  background: #14141c;
+  color: #e8e8f0;
+  font-size: 12px;
+}
+
 .phone-access-body {
   display: flex;
   align-items: center;

@@ -51,6 +51,12 @@ export interface AppSettings {
   sharedFolders: string[]
   downloadFolder: string
   accentColor: string
+  preferredNetworkInterface: string | null
+}
+
+export interface NetworkInterfaceOption {
+  name: string
+  address: string
 }
 
 export type UpdatePhase =

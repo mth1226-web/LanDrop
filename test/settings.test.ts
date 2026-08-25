@@ -10,7 +10,8 @@ const DEFAULTS = {
   deviceName: 'default-name',
   sharedFolders: ['/default/shared'],
   downloadFolder: '/default/downloads',
-  accentColor: '#4caf6a'
+  accentColor: '#4caf6a',
+  preferredNetworkInterface: null
 }
 
 test('ファイルが存在しない場合はデフォルト値を返す', () => {
@@ -25,7 +26,8 @@ test('保存した内容をそのまま読み込める', () => {
     deviceName: 'My PC',
     sharedFolders: ['C:/Users/me/LanDrop共有', 'D:/Videos共有'],
     downloadFolder: 'C:/Users/me/Downloads',
-    accentColor: '#ff8800'
+    accentColor: '#ff8800',
+    preferredNetworkInterface: 'Ethernet'
   }
   saveSettings(filePath, settings)
   assert.deepEqual(loadSettings(filePath, DEFAULTS), settings)
@@ -47,7 +49,8 @@ test('一部フィールドが欠けている場合は該当フィールドの�
     deviceName: 'Only Name',
     sharedFolders: DEFAULTS.sharedFolders,
     downloadFolder: DEFAULTS.downloadFolder,
-    accentColor: DEFAULTS.accentColor
+    accentColor: DEFAULTS.accentColor,
+    preferredNetworkInterface: DEFAULTS.preferredNetworkInterface
   })
   fs.rmSync(filePath, { force: true })
 })
@@ -63,5 +66,12 @@ test('不正な形式のaccentColorはデフォルトにフォールバックす
   const filePath = path.join(os.tmpdir(), `landrop-settings-bad-color-${Date.now()}.json`)
   fs.writeFileSync(filePath, JSON.stringify({ accentColor: 'not-a-color' }), 'utf-8')
   assert.equal(loadSettings(filePath, DEFAULTS).accentColor, DEFAULTS.accentColor)
+  fs.rmSync(filePath, { force: true })
+})
+
+test('preferredNetworkInterfaceがnullの場合はデフォルト(null)のまま', () => {
+  const filePath = path.join(os.tmpdir(), `landrop-settings-null-nic-${Date.now()}.json`)
+  fs.writeFileSync(filePath, JSON.stringify({ preferredNetworkInterface: null }), 'utf-8')
+  assert.equal(loadSettings(filePath, DEFAULTS).preferredNetworkInterface, null)
   fs.rmSync(filePath, { force: true })
 })

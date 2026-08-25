@@ -11,7 +11,7 @@ import { loadSettings, saveSettings } from './settings'
 import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
-import { getLanAddress } from './localNetwork'
+import { getLanAddress, getLanInterfaces } from './localNetwork'
 import type { AppSettings, BrowseEntry, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
@@ -470,8 +470,24 @@ function registerIpcHandlers(): void {
   ipcMain.handle('apply-update', () => applyUpdateAndNotify())
 
   ipcMain.handle('get-lan-url', () => {
-    const address = getLanAddress()
+    const address = getLanAddress(settings.preferredNetworkInterface)
     return address && ownHttpPort ? `http://${address}:${ownHttpPort}/` : null
+  })
+
+  ipcMain.handle('list-network-interfaces', () => getLanInterfaces())
+
+  ipcMain.handle('set-preferred-network-interface', (_event, name: string | null) => {
+    settings = { ...settings, preferredNetworkInterface: name }
+    saveSettings(getSettingsFilePath(), settings)
+    return settings
+  })
+
+  ipcMain.handle('open-network-settings', () => {
+    if (process.platform === 'win32') {
+      void shell.openExternal('ms-settings:network-status')
+    } else if (process.platform === 'darwin') {
+      void shell.openExternal('x-apple.systempreferences:com.apple.preference.network')
+    }
   })
 }
 
@@ -483,7 +499,8 @@ function loadOrInitSettings(): AppSettings {
     deviceName: hostname(),
     sharedFolders: [join(app.getPath('documents'), 'LanDrop共有')],
     downloadFolder: app.getPath('downloads'),
-    accentColor: '#4caf6a'
+    accentColor: '#4caf6a',
+    preferredNetworkInterface: null
   }
   const loaded = loadSettings(filePath, defaults)
   if (isFirstRun) saveSettings(filePath, loaded)

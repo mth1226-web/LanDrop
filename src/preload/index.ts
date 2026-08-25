@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppSettings, BrowseEntry, Peer, TransferActivity, UpdateState } from '../shared/types'
+import type { AppSettings, BrowseEntry, NetworkInterfaceOption, Peer, TransferActivity, UpdateState } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),
   getLanUrl: (): Promise<string | null> => ipcRenderer.invoke('get-lan-url'),
+  listNetworkInterfaces: (): Promise<NetworkInterfaceOption[]> => ipcRenderer.invoke('list-network-interfaces'),
+  setPreferredNetworkInterface: (name: string | null): Promise<AppSettings> =>
+    ipcRenderer.invoke('set-preferred-network-interface', name),
+  openNetworkSettings: (): Promise<void> => ipcRenderer.invoke('open-network-settings'),
 
   onPeersChanged: (callback: (peers: Peer[]) => void) => {
     const handler = (_: unknown, peers: Peer[]): void => callback(peers)

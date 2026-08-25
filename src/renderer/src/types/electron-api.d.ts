@@ -1,4 +1,4 @@
-import type { AppSettings, BrowseEntry, Peer, TransferActivity, UpdateState } from '../../../shared/types'
+import type { AppSettings, BrowseEntry, NetworkInterfaceOption, Peer, TransferActivity, UpdateState } from '../../../shared/types'
 
 export interface ElectronAPI {
   getPathForFile: (file: File) => string
@@ -24,6 +24,9 @@ export interface ElectronAPI {
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>
   getLanUrl: () => Promise<string | null>
+  listNetworkInterfaces: () => Promise<NetworkInterfaceOption[]>
+  setPreferredNetworkInterface: (name: string | null) => Promise<AppSettings>
+  openNetworkSettings: () => Promise<void>
 
   onPeersChanged: (callback: (peers: Peer[]) => void) => () => void
   onActivityUpdated: (callback: (activity: TransferActivity) => void) => () => void

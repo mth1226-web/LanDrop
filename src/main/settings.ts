@@ -23,7 +23,11 @@ export function loadSettings(settingsFilePath: string, defaults: AppSettings): A
       accentColor:
         typeof parsed.accentColor === 'string' && HEX_COLOR_PATTERN.test(parsed.accentColor)
           ? parsed.accentColor
-          : defaults.accentColor
+          : defaults.accentColor,
+      preferredNetworkInterface:
+        typeof parsed.preferredNetworkInterface === 'string' && parsed.preferredNetworkInterface
+          ? parsed.preferredNetworkInterface
+          : defaults.preferredNetworkInterface
     }
   } catch {
     return defaults
