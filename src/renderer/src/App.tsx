@@ -10,7 +10,7 @@ import PreviewDialog from './components/PreviewDialog'
 import type { PreviewSource } from './components/PreviewDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
 import type { BrowseEntry, EntryMetadata, Peer, SortMode } from '../../shared/types'
-import { effectiveManualOrder, moveNameInOrder } from './utils/sortEntries'
+import { effectiveManualOrder, moveNameInOrder, moveNameRelativeTo } from './utils/sortEntries'
 
 export default function App(): JSX.Element {
   const peers = useAppStore((s) => s.peers)
@@ -203,6 +203,14 @@ export default function App(): JSX.Element {
     setCustomOrderState(saved)
   }
 
+  async function handleReorderEntries(draggedName: string, targetName: string, after: boolean): Promise<void> {
+    if (!selectedPeerId || draggedName === targetName) return
+    const order = effectiveManualOrder(entries, customOrder)
+    const nextOrder = moveNameRelativeTo(order, draggedName, targetName, after)
+    const saved = await window.electronAPI.setCustomOrder(selectedPeerId, currentPath, nextOrder)
+    setCustomOrderState(saved)
+  }
+
   function handleCheckForUpdate(): void {
     void window.electronAPI.checkForUpdate()
   }
@@ -260,6 +268,7 @@ export default function App(): JSX.Element {
               onPreviewEntry={handlePreviewEntry}
               onChangeSortMode={handleChangeSortMode}
               onMoveEntry={handleMoveEntry}
+              onReorderEntries={handleReorderEntries}
             />
           ) : (
             <div className="panel folder-browser">

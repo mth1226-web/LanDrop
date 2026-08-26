@@ -38,3 +38,14 @@ export function moveNameInOrder(order: string[], name: string, direction: 'up' |
   ;[next[index], next[swapIndex]] = [next[swapIndex], next[index]]
   return next
 }
+
+/** ドラッグ&ドロップ用: nameをtargetNameの直前/直後に移動する。targetNameが無ければそのまま返す */
+export function moveNameRelativeTo(order: string[], name: string, targetName: string, after: boolean): string[] {
+  const withoutName = order.filter((n) => n !== name)
+  const targetIndex = withoutName.indexOf(targetName)
+  if (targetIndex < 0) return order
+  const insertIndex = after ? targetIndex + 1 : targetIndex
+  const next = [...withoutName]
+  next.splice(insertIndex, 0, name)
+  return next
+}

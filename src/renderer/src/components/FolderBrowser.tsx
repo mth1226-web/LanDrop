@@ -31,6 +31,7 @@ interface Props {
   onPreviewEntry: (entry: BrowseEntry) => void
   onChangeSortMode: (mode: SortMode) => void
   onMoveEntry: (name: string, direction: 'up' | 'down') => void
+  onReorderEntries: (draggedName: string, targetName: string, after: boolean) => void
 }
 
 export default function FolderBrowser({
@@ -55,7 +56,8 @@ export default function FolderBrowser({
   onRemoveDownloadFolderOverride,
   onPreviewEntry,
   onChangeSortMode,
-  onMoveEntry
+  onMoveEntry,
+  onReorderEntries
 }: Props): JSX.Element {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false)
@@ -63,6 +65,8 @@ export default function FolderBrowser({
   const [detailsEntry, setDetailsEntry] = useState<BrowseEntry | null>(null)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [showHidden, setShowHidden] = useState(false)
+  const [draggedName, setDraggedName] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const segments = pathSegments(currentPath)
@@ -103,6 +107,43 @@ export default function FolderBrowser({
     e.preventDefault()
     markInternalDragStart()
     window.electronAPI.startDrag(joinRelPath(currentPath, entry.name))
+  }
+
+  function handleEntryDragStart(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+    if (sortMode === 'manual') {
+      e.dataTransfer.effectAllowed = 'move'
+      markInternalDragStart()
+      setDraggedName(entry.name)
+      return
+    }
+    if (isSelf) handleDragStartToOs(e, entry)
+  }
+
+  function handleReorderDragOver(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+    if (sortMode !== 'manual' || !draggedName || draggedName === entry.name) return
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const after = e.clientY - rect.top > rect.height / 2
+    setDropTarget({ name: entry.name, after })
+  }
+
+  function handleReorderDrop(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+    if (sortMode !== 'manual' || !draggedName) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (draggedName !== entry.name) {
+      const after = dropTarget?.name === entry.name ? dropTarget.after : false
+      onReorderEntries(draggedName, entry.name, after)
+    }
+    setDraggedName(null)
+    setDropTarget(null)
+  }
+
+  function handleEntryDragEnd(): void {
+    markInternalDragEnd()
+    setDraggedName(null)
+    setDropTarget(null)
   }
 
   const hiddenCount = entries.filter((e) => metadata[e.name]?.hidden).length
@@ -201,11 +242,19 @@ export default function FolderBrowser({
             return (
               <li
                 key={entry.name}
-                className={meta?.hidden ? 'entry-item entry-hidden' : 'entry-item'}
+                className={[
+                  'entry-item',
+                  meta?.hidden ? 'entry-hidden' : '',
+                  dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 style={meta?.color ? { borderLeft: `3px solid ${meta.color}` } : undefined}
-                draggable={isSelf}
-                onDragStart={isSelf ? (e) => handleDragStartToOs(e, entry) : undefined}
-                onDragEnd={isSelf ? () => markInternalDragEnd() : undefined}
+                draggable={sortMode === 'manual' || isSelf}
+                onDragStart={(e) => handleEntryDragStart(e, entry)}
+                onDragOver={(e) => handleReorderDragOver(e, entry)}
+                onDrop={(e) => handleReorderDrop(e, entry)}
+                onDragEnd={handleEntryDragEnd}
               >
                 {!isSelf && (
                   <input
