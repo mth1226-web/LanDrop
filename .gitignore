@@ -14,3 +14,6 @@ release/
 # OS
 .DS_Store
 Thumbs.db
+
+# 個人用の開発起動スクリプト
+dev.bat

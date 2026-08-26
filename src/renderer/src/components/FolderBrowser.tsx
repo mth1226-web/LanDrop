@@ -249,7 +249,11 @@ export default function FolderBrowser({
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                style={meta?.color ? { borderLeft: `3px solid ${meta.color}` } : undefined}
+                style={
+                  meta?.color
+                    ? { backgroundColor: hexToRgba(meta.color, 0.18), borderLeft: `3px solid ${meta.color}` }
+                    : undefined
+                }
                 draggable={sortMode === 'manual' || isSelf}
                 onDragStart={(e) => handleEntryDragStart(e, entry)}
                 onDragOver={(e) => handleReorderDragOver(e, entry)}
