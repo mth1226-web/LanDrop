@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { BrowseEntry, EntryMetadata } from '../../../shared/types'
 import { joinRelPath, pathSegments } from '../store'
 import { formatBytes, hexToRgba } from '../utils/format'
+import { getPreviewKind } from '../utils/previewKind'
 import InputDialog from './InputDialog'
 import EntryDetailsDialog from './EntryDetailsDialog'
 
@@ -23,6 +24,7 @@ interface Props {
   onSaveMetadata: (entryName: string, patch: Partial<EntryMetadata>) => void
   onSetDownloadFolderOverride: (label: string) => void
   onRemoveDownloadFolderOverride: (label: string) => void
+  onPreviewEntry: (entry: BrowseEntry) => void
 }
 
 export default function FolderBrowser({
@@ -42,7 +44,8 @@ export default function FolderBrowser({
   onRevealLocal,
   onSaveMetadata,
   onSetDownloadFolderOverride,
-  onRemoveDownloadFolderOverride
+  onRemoveDownloadFolderOverride,
+  onPreviewEntry
 }: Props): JSX.Element {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false)
@@ -179,10 +182,15 @@ export default function FolderBrowser({
                 )}
                 <button
                   className="entry-main"
-                  onClick={() => entry.isDirectory && onNavigate(joinRelPath(currentPath, entry.name))}
-                  disabled={!entry.isDirectory}
+                  onClick={() => {
+                    if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                    else if (getPreviewKind(entry.name)) onPreviewEntry(entry)
+                  }}
+                  disabled={!entry.isDirectory && !getPreviewKind(entry.name)}
                 >
-                  <span className="entry-icon">{entry.isDirectory ? '📁' : '📄'}</span>
+                  <span className="entry-icon">
+                    {entry.isDirectory ? '📁' : getPreviewKind(entry.name) === 'image' ? '🖼️' : getPreviewKind(entry.name) === 'video' ? '🎬' : '📄'}
+                  </span>
                   <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
                   {meta?.imported && (
                     <span className="entry-badge" title="取り込み済み">

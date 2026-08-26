@@ -33,6 +33,7 @@ export interface ElectronAPI {
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>
   getLanUrl: () => Promise<string | null>
+  getOwnPreviewBaseUrl: () => Promise<string | null>
   listNetworkInterfaces: () => Promise<NetworkInterfaceOption[]>
   setPreferredNetworkInterface: (name: string | null) => Promise<AppSettings>
   openNetworkSettings: () => Promise<void>

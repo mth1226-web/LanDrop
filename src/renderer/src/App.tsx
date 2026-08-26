@@ -6,6 +6,8 @@ import ActivityList from './components/ActivityList'
 import SettingsDialog from './components/SettingsDialog'
 import UpdateDialog from './components/UpdateDialog'
 import ChatDialog from './components/ChatDialog'
+import PreviewDialog from './components/PreviewDialog'
+import type { PreviewSource } from './components/PreviewDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
 import type { BrowseEntry, EntryMetadata, Peer } from '../../shared/types'
 
@@ -34,6 +36,9 @@ export default function App(): JSX.Element {
   const [showSettings, setShowSettings] = useState(false)
   const [showUpdate, setShowUpdate] = useState(false)
   const [showChat, setShowChat] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewSource, setPreviewSource] = useState<PreviewSource | null>(null)
+  const [ownPreviewBaseUrl, setOwnPreviewBaseUrl] = useState<string | null>(null)
 
   useEffect(() => {
     window.electronAPI.getPeers().then(setPeers)
@@ -43,6 +48,7 @@ export default function App(): JSX.Element {
     const unsubscribeUploaded = window.electronAPI.onPeerUploaded(() => reloadEntries())
     const unsubscribeUpdate = window.electronAPI.onUpdateState(setUpdateState)
     void window.electronAPI.checkForUpdate()
+    window.electronAPI.getOwnPreviewBaseUrl().then(setOwnPreviewBaseUrl)
     return () => {
       unsubscribePeers()
       unsubscribeActivity()
@@ -89,6 +95,7 @@ export default function App(): JSX.Element {
     : peers
   const selectedPeer = displayPeers.find((p) => p.deviceId === selectedPeerId) ?? null
   const activityList = Object.values(activities).sort((a, b) => b.createdAt - a.createdAt)
+  const previewBaseUrl = isSelf ? ownPreviewBaseUrl : selectedPeer ? `http://${selectedPeer.address}:${selectedPeer.httpPort}` : null
 
   function handleUploadFiles(filePaths: string[]): void {
     if (!selectedPeerId) return
@@ -112,6 +119,17 @@ export default function App(): JSX.Element {
 
   function handleRevealLocal(entry: BrowseEntry): void {
     void window.electronAPI.revealLocalFile(joinRelPath(currentPath, entry.name))
+  }
+
+  function handlePreviewEntry(entry: BrowseEntry): void {
+    if (!previewBaseUrl) return
+    const relPath = joinRelPath(currentPath, entry.name)
+    setPreviewSource({ url: `${previewBaseUrl}/api/download?path=${encodeURIComponent(relPath)}`, name: entry.name })
+    setShowPreview(true)
+  }
+
+  function handleShowLocalPreviewFile(file: File): void {
+    setPreviewSource({ url: URL.createObjectURL(file), name: file.name })
   }
 
   async function handleSaveDeviceName(deviceName: string): Promise<void> {
@@ -182,6 +200,9 @@ export default function App(): JSX.Element {
       <header className="app-header">
         <h1>LanDrop</h1>
         <div className="app-header-actions">
+          <button className="button secondary" onClick={() => setShowPreview(true)}>
+            プレビュー
+          </button>
           <button className="button secondary" onClick={() => setShowChat(true)}>
             チャット
           </button>
@@ -218,6 +239,7 @@ export default function App(): JSX.Element {
               onSaveMetadata={handleSaveMetadata}
               onSetDownloadFolderOverride={handleSetDownloadFolderOverride}
               onRemoveDownloadFolderOverride={handleRemoveDownloadFolderOverride}
+              onPreviewEntry={handlePreviewEntry}
             />
           ) : (
             <div className="panel folder-browser">
@@ -257,6 +279,17 @@ export default function App(): JSX.Element {
           selfDeviceId={settings.deviceId}
           selfDeviceName={settings.deviceName}
           onClose={() => setShowChat(false)}
+        />
+      )}
+
+      {showPreview && (
+        <PreviewDialog
+          source={previewSource}
+          onShowLocalFile={handleShowLocalPreviewFile}
+          onClose={() => {
+            setShowPreview(false)
+            setPreviewSource(null)
+          }}
         />
       )}
     </div>

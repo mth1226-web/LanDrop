@@ -586,6 +586,9 @@ function registerIpcHandlers(): void {
     return address && ownHttpPort ? `http://${address}:${ownHttpPort}/` : null
   })
 
+  // 自分の共有フォルダのプレビュー(画像/動画)用。ループバックなのでネットワークインターフェースの有無に依存しない
+  ipcMain.handle('get-own-preview-base-url', () => (ownHttpPort ? `http://127.0.0.1:${ownHttpPort}` : null))
+
   ipcMain.handle('list-network-interfaces', () => getLanInterfaces())
 
   ipcMain.handle('set-preferred-network-interface', (_event, name: string | null) => {

@@ -1,6 +1,6 @@
 {
   "name": "landrop",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "LanDrop - 同一LAN内のPC同士でドラッグ&ドロップだけでファイルを送受信するアプリ",
   "main": "out/main/index.js",
   "scripts": {

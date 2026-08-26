@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),
   getLanUrl: (): Promise<string | null> => ipcRenderer.invoke('get-lan-url'),
+  getOwnPreviewBaseUrl: (): Promise<string | null> => ipcRenderer.invoke('get-own-preview-base-url'),
   listNetworkInterfaces: (): Promise<NetworkInterfaceOption[]> => ipcRenderer.invoke('list-network-interfaces'),
   setPreferredNetworkInterface: (name: string | null): Promise<AppSettings> =>
     ipcRenderer.invoke('set-preferred-network-interface', name),

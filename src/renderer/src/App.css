@@ -749,3 +749,46 @@ body {
   color: #e8e8f0;
   font-size: 13px;
 }
+
+.preview-dialog {
+  width: 640px;
+  max-width: 92vw;
+}
+
+.preview-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.preview-dialog-header h2 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-area {
+  height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #3a3a4c;
+  border-radius: 10px;
+  background: #0e0e14;
+  overflow: hidden;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.preview-area.drag-over {
+  border-color: #5878e8;
+  background: #14182c;
+}
+
+.preview-media {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
