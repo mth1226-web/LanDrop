@@ -45,3 +45,28 @@ test('必須フィールドが欠けている場合はnullを返す', () => {
 test('他人が送ってきた無関係なJSONはnullを返す', () => {
   assert.equal(parseDiscoveryMessage(Buffer.from(JSON.stringify({ foo: 'bar' }))), null)
 })
+
+test('chatメッセージをシリアライズ/パースできる', () => {
+  const buf = serializeDiscoveryMessage({
+    type: 'chat',
+    id: 'msg-1',
+    fromDeviceId: 'abc-123',
+    fromDeviceName: 'my-pc',
+    text: 'こんにちは',
+    timestamp: 1700000000000
+  })
+  const parsed = parseDiscoveryMessage(buf)
+  assert.deepEqual(parsed, {
+    type: 'chat',
+    id: 'msg-1',
+    fromDeviceId: 'abc-123',
+    fromDeviceName: 'my-pc',
+    text: 'こんにちは',
+    timestamp: 1700000000000
+  })
+})
+
+test('chatメッセージで必須フィールドが欠けている場合はnullを返す', () => {
+  const bad = JSON.stringify({ type: 'chat', id: 'x', fromDeviceId: 'y' })
+  assert.equal(parseDiscoveryMessage(Buffer.from(bad)), null)
+})

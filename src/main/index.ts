@@ -6,7 +6,15 @@ import { hostname } from 'os'
 import { Discovery } from './discovery'
 import { HttpServer } from './httpServer'
 import { ActivityStore } from './activityStore'
-import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile, downloadZip } from './transferClient'
+import {
+  browseFolder,
+  createFolderRemote,
+  renameEntryRemote,
+  uploadFile,
+  downloadFile,
+  downloadZip,
+  sendChatMessage
+} from './transferClient'
 import { loadSettings, saveSettings } from './settings'
 import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
@@ -21,7 +29,18 @@ import {
 } from './entryMetadata'
 import type { EntryMetadataStore } from './entryMetadata'
 import { resolveDownloadDestination } from './downloadDestination'
-import type { AppSettings, BrowseEntry, UpdateState } from '../shared/types'
+import {
+  loadChatStore,
+  saveChatStore,
+  appendBroadcastMessage,
+  appendDirectMessage,
+  clearBroadcastLog,
+  clearDirectLog,
+  getBroadcastLog,
+  getDirectLog
+} from './chatStore'
+import type { ChatStore } from './chatStore'
+import type { AppSettings, BrowseEntry, ChatMessage, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let settings: AppSettings
@@ -29,6 +48,7 @@ let httpServer: HttpServer | null = null
 let discovery: Discovery | null = null
 let ownHttpPort = 0
 let entryMetadataStore: EntryMetadataStore = {}
+let chatStore: ChatStore = { broadcast: [], direct: {} }
 
 const activityStore = new ActivityStore()
 
@@ -38,6 +58,10 @@ function getSettingsFilePath(): string {
 
 function getEntryMetadataFilePath(): string {
   return join(app.getPath('userData'), 'landrop-entry-metadata.json')
+}
+
+function getChatFilePath(): string {
+  return join(app.getPath('userData'), 'landrop-chat.json')
 }
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -193,7 +217,19 @@ async function startNetworking(): Promise<void> {
     sendToRenderer('peer-uploaded', payload)
   })
 
+  httpServer.on('chat-received', (message) => {
+    chatStore = appendDirectMessage(chatStore, message.fromDeviceId, message)
+    saveChatStore(getChatFilePath(), chatStore)
+    sendToRenderer('chat-message', { target: message.fromDeviceId, message })
+  })
+
   discovery.on('peers-changed', (peers) => sendToRenderer('peers-changed', peers))
+
+  discovery.on('chat', (message) => {
+    chatStore = appendBroadcastMessage(chatStore, message)
+    saveChatStore(getChatFilePath(), chatStore)
+    sendToRenderer('chat-message', { target: 'broadcast', message })
+  })
 
   discovery.start()
 }
@@ -563,6 +599,42 @@ function registerIpcHandlers(): void {
       )
     })
   })
+
+  ipcMain.handle('get-chat-log', (_event, target: string) =>
+    target === 'broadcast' ? getBroadcastLog(chatStore) : getDirectLog(chatStore, target)
+  )
+
+  ipcMain.handle('send-chat-message', async (_event, args: { target: string; text: string }) => {
+    const message: ChatMessage = {
+      id: randomUUID(),
+      fromDeviceId: settings.deviceId,
+      fromDeviceName: settings.deviceName,
+      text: args.text,
+      timestamp: Date.now()
+    }
+
+    if (args.target === 'broadcast') {
+      chatStore = appendBroadcastMessage(chatStore, message)
+      saveChatStore(getChatFilePath(), chatStore)
+      discovery?.broadcastChat(message)
+      return message
+    }
+
+    chatStore = appendDirectMessage(chatStore, args.target, message)
+    saveChatStore(getChatFilePath(), chatStore)
+    try {
+      const peer = findPeerOrThrow(args.target)
+      await sendChatMessage(peer.address, peer.httpPort, message)
+    } catch {
+      // 相手がオフライン等で送れなかった場合も、自分のログには残す(既にappendDirectMessage済み)
+    }
+    return message
+  })
+
+  ipcMain.handle('clear-chat-log', (_event, target: string) => {
+    chatStore = target === 'broadcast' ? clearBroadcastLog(chatStore) : clearDirectLog(chatStore, target)
+    saveChatStore(getChatFilePath(), chatStore)
+  })
 }
 
 function loadOrInitSettings(): AppSettings {
@@ -593,6 +665,7 @@ app.whenReady().then(async () => {
   buildApplicationMenu()
   settings = loadOrInitSettings()
   entryMetadataStore = loadEntryMetadataStore(getEntryMetadataFilePath())
+  chatStore = loadChatStore(getChatFilePath())
   mainWindow = createWindow()
   registerIpcHandlers()
   await startNetworking()

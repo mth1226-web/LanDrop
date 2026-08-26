@@ -5,6 +5,7 @@ import FolderBrowser from './components/FolderBrowser'
 import ActivityList from './components/ActivityList'
 import SettingsDialog from './components/SettingsDialog'
 import UpdateDialog from './components/UpdateDialog'
+import ChatDialog from './components/ChatDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
 import type { BrowseEntry, EntryMetadata, Peer } from '../../shared/types'
 
@@ -32,6 +33,7 @@ export default function App(): JSX.Element {
 
   const [showSettings, setShowSettings] = useState(false)
   const [showUpdate, setShowUpdate] = useState(false)
+  const [showChat, setShowChat] = useState(false)
 
   useEffect(() => {
     window.electronAPI.getPeers().then(setPeers)
@@ -180,6 +182,9 @@ export default function App(): JSX.Element {
       <header className="app-header">
         <h1>LanDrop</h1>
         <div className="app-header-actions">
+          <button className="button secondary" onClick={() => setShowChat(true)}>
+            チャット
+          </button>
           <button className="button secondary" onClick={() => setShowUpdate(true)}>
             アップデート{updateState.phase === 'available' && <span className="update-dot" />}
           </button>
@@ -243,6 +248,15 @@ export default function App(): JSX.Element {
           onCheck={handleCheckForUpdate}
           onApply={handleApplyUpdate}
           onClose={() => setShowUpdate(false)}
+        />
+      )}
+
+      {showChat && settings && (
+        <ChatDialog
+          peers={peers}
+          selfDeviceId={settings.deviceId}
+          selfDeviceName={settings.deviceName}
+          onClose={() => setShowChat(false)}
         />
       )}
     </div>

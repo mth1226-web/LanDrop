@@ -3,7 +3,7 @@ import dgram from 'node:dgram'
 import { EventEmitter } from 'node:events'
 import { DiscoveryStore, PEER_TTL_MS } from './discoveryStore'
 import { parseDiscoveryMessage, serializeDiscoveryMessage } from './protocol'
-import type { Peer } from '../shared/types'
+import type { ChatMessage, Peer } from '../shared/types'
 
 export const DISCOVERY_PORT = 48737
 const ANNOUNCE_INTERVAL_MS = 3000
@@ -19,7 +19,9 @@ export interface DiscoveryOptions {
 
 export declare interface Discovery {
   on(event: 'peers-changed', listener: (peers: Peer[]) => void): this
+  on(event: 'chat', listener: (message: ChatMessage) => void): this
   emit(event: 'peers-changed', peers: Peer[]): boolean
+  emit(event: 'chat', message: ChatMessage): boolean
 }
 
 export class Discovery extends EventEmitter {
@@ -48,6 +50,15 @@ export class Discovery extends EventEmitter {
       } else if (parsed.type === 'goodbye') {
         const removed = this.store.handleGoodbye(parsed)
         if (removed) this.emit('peers-changed', this.store.getPeers())
+      } else if (parsed.type === 'chat') {
+        if (parsed.fromDeviceId === this.options.deviceId) return
+        this.emit('chat', {
+          id: parsed.id,
+          fromDeviceId: parsed.fromDeviceId,
+          fromDeviceName: parsed.fromDeviceName,
+          text: parsed.text,
+          timestamp: parsed.timestamp
+        })
       }
     })
 
@@ -87,6 +98,13 @@ export class Discovery extends EventEmitter {
 
   setDeviceName(deviceName: string): void {
     this.options.deviceName = deviceName
+  }
+
+  /** 全体チャットメッセージをLAN内にブロードキャストする */
+  broadcastChat(message: ChatMessage): void {
+    if (!this.socket) return
+    const payload = serializeDiscoveryMessage({ type: 'chat', ...message })
+    this.socket.send(payload, this.options.port, BROADCAST_ADDRESS)
   }
 
   private sendAnnounce(): void {

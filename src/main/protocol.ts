@@ -41,5 +41,25 @@ export function parseDiscoveryMessage(buf: Buffer): DiscoveryMessage | null {
     return null
   }
 
+  if (obj.type === 'chat') {
+    if (
+      typeof obj.id === 'string' &&
+      typeof obj.fromDeviceId === 'string' &&
+      typeof obj.fromDeviceName === 'string' &&
+      typeof obj.text === 'string' &&
+      typeof obj.timestamp === 'number'
+    ) {
+      return {
+        type: 'chat',
+        id: obj.id,
+        fromDeviceId: obj.fromDeviceId,
+        fromDeviceName: obj.fromDeviceName,
+        text: obj.text,
+        timestamp: obj.timestamp
+      }
+    }
+    return null
+  }
+
   return null
 }

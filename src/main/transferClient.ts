@@ -1,7 +1,7 @@
 // 共有フォルダ参照・アップロード/ダウンロード・フォルダ作成・リネームのHTTPクライアント（Electron非依存）
 import http from 'node:http'
 import fs from 'node:fs'
-import type { BrowseEntry } from '../shared/types'
+import type { BrowseEntry, ChatMessage } from '../shared/types'
 
 function getJson<T>(address: string, port: number, path: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -61,6 +61,10 @@ export async function browseFolder(address: string, port: number, relPath: strin
 
 export function createFolderRemote(address: string, port: number, relPath: string, name: string): Promise<void> {
   return postJson(address, port, '/api/mkdir', { path: relPath, name })
+}
+
+export function sendChatMessage(address: string, port: number, message: ChatMessage): Promise<void> {
+  return postJson(address, port, '/api/chat', message)
 }
 
 export function renameEntryRemote(

@@ -8,7 +8,7 @@ import archiver from 'archiver'
 import { browseShared, resolveSharedEntry, resolveSafePath, createFolder, renameEntry, isValidEntryName } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { renderWebUiHtml } from './webUi'
-import type { BrowseEntry } from '../shared/types'
+import type { BrowseEntry, ChatMessage } from '../shared/types'
 
 const JSON_BODY_LIMIT_BYTES = 1_000_000
 
@@ -21,7 +21,9 @@ export interface UploadReceivedPayload {
 
 export declare interface HttpServer {
   on(event: 'upload-received', listener: (payload: UploadReceivedPayload) => void): this
+  on(event: 'chat-received', listener: (message: ChatMessage) => void): this
   emit(event: 'upload-received', payload: UploadReceivedPayload): boolean
+  emit(event: 'chat-received', message: ChatMessage): boolean
 }
 
 export class HttpServer extends EventEmitter {
@@ -68,6 +70,7 @@ export class HttpServer extends EventEmitter {
       if (req.method === 'POST' && url.pathname === '/api/upload') return void this.handleUpload(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/mkdir') return void this.handleMkdir(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/rename') return void this.handleRename(req, res, url)
+      if (req.method === 'POST' && url.pathname === '/api/chat') return void this.handleChat(req, res)
     } catch (err) {
       this.sendJson(res, 500, { ok: false, error: String(err) })
       return
@@ -246,5 +249,26 @@ export class HttpServer extends EventEmitter {
       return
     }
     this.sendJson(res, 200, { ok: true })
+  }
+
+  private async handleChat(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    let body: ChatMessage
+    try {
+      body = await this.readJsonBody(req, JSON_BODY_LIMIT_BYTES)
+      if (
+        typeof body.id !== 'string' ||
+        typeof body.fromDeviceId !== 'string' ||
+        typeof body.fromDeviceName !== 'string' ||
+        typeof body.text !== 'string' ||
+        typeof body.timestamp !== 'number'
+      ) {
+        throw new Error('invalid chat message')
+      }
+    } catch (err) {
+      this.sendJson(res, 400, { ok: false, error: String(err) })
+      return
+    }
+    this.sendJson(res, 200, { ok: true })
+    this.emit('chat-received', body)
   }
 }

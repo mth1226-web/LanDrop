@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   AppSettings,
   BrowseEntry,
+  ChatMessage,
   EntryMetadata,
   NetworkInterfaceOption,
   Peer,
@@ -60,6 +61,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   startDrag: (relPath: string): void => ipcRenderer.send('start-drag', relPath),
 
+  getChatLog: (target: string): Promise<ChatMessage[]> => ipcRenderer.invoke('get-chat-log', target),
+  sendChatMessage: (target: string, text: string): Promise<ChatMessage> =>
+    ipcRenderer.invoke('send-chat-message', { target, text }),
+  clearChatLog: (target: string): Promise<void> => ipcRenderer.invoke('clear-chat-log', target),
+
   onPeersChanged: (callback: (peers: Peer[]) => void) => {
     const handler = (_: unknown, peers: Peer[]): void => callback(peers)
     ipcRenderer.on('peers-changed', handler)
@@ -79,5 +85,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_: unknown, state: UpdateState): void => callback(state)
     ipcRenderer.on('update-state', handler)
     return () => ipcRenderer.removeListener('update-state', handler)
+  },
+  onChatMessage: (callback: (payload: { target: string; message: ChatMessage }) => void) => {
+    const handler = (_: unknown, payload: { target: string; message: ChatMessage }): void => callback(payload)
+    ipcRenderer.on('chat-message', handler)
+    return () => ipcRenderer.removeListener('chat-message', handler)
   }
 })

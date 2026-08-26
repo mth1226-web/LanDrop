@@ -20,7 +20,27 @@ export interface DeviceGoodbye {
   deviceId: string
 }
 
-export type DiscoveryMessage = DeviceAnnounce | DeviceGoodbye
+export interface ChatBroadcastMessage {
+  type: 'chat'
+  id: string
+  fromDeviceId: string
+  fromDeviceName: string
+  text: string
+  timestamp: number
+}
+
+export type DiscoveryMessage = DeviceAnnounce | DeviceGoodbye | ChatBroadcastMessage
+
+export interface ChatMessage {
+  id: string
+  fromDeviceId: string
+  fromDeviceName: string
+  text: string
+  timestamp: number
+}
+
+/** チャットの相手先。'broadcast' = 全体チャット、それ以外は相手のdeviceId(個別チャット) */
+export type ChatTarget = string
 
 export interface BrowseEntry {
   name: string

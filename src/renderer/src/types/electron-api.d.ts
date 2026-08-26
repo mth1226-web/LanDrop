@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   BrowseEntry,
+  ChatMessage,
   EntryMetadata,
   NetworkInterfaceOption,
   Peer,
@@ -48,10 +49,15 @@ export interface ElectronAPI {
 
   startDrag: (relPath: string) => void
 
+  getChatLog: (target: string) => Promise<ChatMessage[]>
+  sendChatMessage: (target: string, text: string) => Promise<ChatMessage>
+  clearChatLog: (target: string) => Promise<void>
+
   onPeersChanged: (callback: (peers: Peer[]) => void) => () => void
   onActivityUpdated: (callback: (activity: TransferActivity) => void) => () => void
   onPeerUploaded: (callback: () => void) => () => void
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
+  onChatMessage: (callback: (payload: { target: string; message: ChatMessage }) => void) => () => void
 }
 
 declare global {
