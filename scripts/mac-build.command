@@ -11,13 +11,28 @@ echo " LanDrop Mac用ビルドスクリプト"
 echo "=================================================="
 echo ""
 
+echo "=== 1/5: Node.jsを確認しています... ==="
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && { \. "$NVM_DIR/nvm.sh" || true; }
+command -v nvm >/dev/null 2>&1 && { nvm use default >/dev/null 2>&1 || true; }
+
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  echo "Node.jsがインストールされていません。"
-  echo "https://nodejs.org/ からLTS版をインストールしてから、もう一度このファイルを"
-  echo "ダブルクリックしてください。"
+  echo "Node.jsが無いので、自動でインストールします（初回のみ、数分かかります）。"
+  echo "パスワードの入力は不要です。しばらくお待ちください..."
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash || true
+  [ -s "$NVM_DIR/nvm.sh" ] && { \. "$NVM_DIR/nvm.sh" || true; }
+  command -v nvm >/dev/null 2>&1 && { nvm install --lts || true; }
+fi
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo ""
+  echo "Node.jsの自動インストールに失敗しました。"
+  echo "お手数ですが https://nodejs.org/ からLTS版を手動でインストールしてから、"
+  echo "もう一度このファイルをダブルクリックしてください。"
   read -p "Enterキーを押すと終了します..." _
   exit 1
 fi
+echo "Node.js $(node -v) / npm $(npm -v) を使用します。"
 
 # scripts/ の1つ上にpackage.jsonがあれば、そこが本体（git clone / ZIP解凍のどちらでもOK）。
 # 無ければこのファイルの隣にLanDropフォルダを新規取得する（要git）。
@@ -44,11 +59,11 @@ else
 fi
 
 echo ""
-echo "=== 1/4: 依存パッケージをインストール中... ==="
+echo "=== 2/5: 依存パッケージをインストール中... ==="
 npm install
 
 echo ""
-echo "=== 2/4: アプリをビルド中... ==="
+echo "=== 3/5: アプリをビルド中... ==="
 npm run package
 
 APP_PATH=$(find dist -maxdepth 2 -name "LanDrop.app" 2>/dev/null | head -n 1)
@@ -60,11 +75,11 @@ if [ -z "$APP_PATH" ]; then
 fi
 
 echo ""
-echo "=== 3/4: 署名しています（Gatekeeper対策） ==="
+echo "=== 4/5: 署名しています（Gatekeeper対策） ==="
 codesign --force --deep --sign - "$APP_PATH"
 
 echo ""
-echo "=== 4/4: 完了しました。Finderで表示します ==="
+echo "=== 5/5: 完了しました。Finderで表示します ==="
 open -R "$APP_PATH"
 
 echo ""
