@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, Menu, MenuItemConstructorOptions } from 'electron'
 import { join, basename, posix } from 'path'
-import { existsSync, statSync, copyFileSync } from 'fs'
+import { existsSync, statSync, cpSync, rmSync, createWriteStream } from 'fs'
 import { randomUUID } from 'crypto'
-import { hostname } from 'os'
+import { hostname, tmpdir } from 'os'
+import archiver from 'archiver'
 import { Discovery } from './discovery'
 import { HttpServer } from './httpServer'
 import { ActivityStore } from './activityStore'
@@ -11,6 +12,7 @@ import {
   createFolderRemote,
   renameEntryRemote,
   uploadFile,
+  uploadZip,
   downloadFile,
   downloadZip,
   sendChatMessage
@@ -363,13 +365,16 @@ function registerIpcHandlers(): void {
         }
         for (const filePath of args.filePaths) {
           const dest = resolveUniquePath(dir, basename(filePath))
-          copyFileSync(filePath, dest)
+          cpSync(filePath, dest, { recursive: true })
         }
         return { ok: true }
       }
 
       const peer = findPeerOrThrow(args.peerDeviceId)
-      for (const filePath of args.filePaths) {
+
+      // ファイル1件だけ(フォルダを含まない)の場合は直接アップロードする(高速・シンプル)
+      if (args.filePaths.length === 1 && !statSync(args.filePaths[0]).isDirectory()) {
+        const filePath = args.filePaths[0]
         const stat = statSync(filePath)
         const id = randomUUID()
         activityStore.create({
@@ -400,7 +405,56 @@ function registerIpcHandlers(): void {
           activityStore.fail(id, String(err))
         }
         broadcastActivity(id)
+        return { ok: true }
       }
+
+      // 複数選択、またはフォルダを含む場合はzipにまとめてアップロードする(サーバー側で展開して配置)
+      const tempZipPath = join(tmpdir(), `landrop-upload-${randomUUID()}.zip`)
+      await new Promise<void>((resolve, reject) => {
+        const output = createWriteStream(tempZipPath)
+        const archive = archiver('zip', { zlib: { level: 6 } })
+        output.on('close', () => resolve())
+        archive.on('error', reject)
+        archive.pipe(output)
+        for (const filePath of args.filePaths) {
+          const name = basename(filePath)
+          if (statSync(filePath).isDirectory()) archive.directory(filePath, name)
+          else archive.file(filePath, { name })
+        }
+        void archive.finalize()
+      })
+
+      const zipStat = statSync(tempZipPath)
+      const id = randomUUID()
+      activityStore.create({
+        id,
+        direction: 'upload',
+        peerDeviceId: args.peerDeviceId,
+        peerDeviceName: peer.deviceName,
+        fileName: args.filePaths.length === 1 ? basename(args.filePaths[0]) : `${args.filePaths.length}件`,
+        totalBytes: zipStat.size,
+        now: Date.now()
+      })
+      broadcastActivity(id)
+      try {
+        await uploadZip({
+          address: peer.address,
+          port: peer.httpPort,
+          relPath: args.relPath,
+          zipFilePath: tempZipPath,
+          size: zipStat.size,
+          onProgress: (transferred) => {
+            activityStore.updateProgress(id, transferred)
+            broadcastActivity(id)
+          }
+        })
+        activityStore.complete(id)
+      } catch (err) {
+        activityStore.fail(id, String(err))
+      } finally {
+        rmSync(tempZipPath, { force: true })
+      }
+      broadcastActivity(id)
       return { ok: true }
     }
   )

@@ -77,24 +77,23 @@ export function renameEntryRemote(
   return postJson(address, port, '/api/rename', { path: relPath, oldName, newName })
 }
 
-export function uploadFile(params: {
+function postFile(params: {
   address: string
   port: number
-  relPath: string
-  name: string
+  path: string
+  contentType: string
   filePath: string
   size: number
   onProgress?: (transferredBytes: number) => void
 }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const query = `path=${encodeURIComponent(params.relPath)}&name=${encodeURIComponent(params.name)}`
     const req = http.request(
       {
         host: params.address,
         port: params.port,
-        path: `/api/upload?${query}`,
+        path: params.path,
         method: 'POST',
-        headers: { 'content-type': 'application/octet-stream', 'content-length': params.size }
+        headers: { 'content-type': params.contentType, 'content-length': params.size }
       },
       (res) => {
         res.resume()
@@ -115,6 +114,47 @@ export function uploadFile(params: {
     })
     readStream.on('error', reject)
     readStream.pipe(req)
+  })
+}
+
+export function uploadFile(params: {
+  address: string
+  port: number
+  relPath: string
+  name: string
+  filePath: string
+  size: number
+  onProgress?: (transferredBytes: number) => void
+}): Promise<void> {
+  const query = `path=${encodeURIComponent(params.relPath)}&name=${encodeURIComponent(params.name)}`
+  return postFile({
+    address: params.address,
+    port: params.port,
+    path: `/api/upload?${query}`,
+    contentType: 'application/octet-stream',
+    filePath: params.filePath,
+    size: params.size,
+    onProgress: params.onProgress
+  })
+}
+
+/** 複数のファイル/フォルダをまとめたzipを送り、サーバー側で展開して配置してもらう */
+export function uploadZip(params: {
+  address: string
+  port: number
+  relPath: string
+  zipFilePath: string
+  size: number
+  onProgress?: (transferredBytes: number) => void
+}): Promise<void> {
+  return postFile({
+    address: params.address,
+    port: params.port,
+    path: `/api/upload-zip?path=${encodeURIComponent(params.relPath)}`,
+    contentType: 'application/zip',
+    filePath: params.zipFilePath,
+    size: params.size,
+    onProgress: params.onProgress
   })
 }
 

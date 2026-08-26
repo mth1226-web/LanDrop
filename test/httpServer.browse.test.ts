@@ -6,8 +6,34 @@ import path from 'node:path'
 import { once } from 'node:events'
 import http from 'node:http'
 import extractZip from 'extract-zip'
+import archiver from 'archiver'
 import { HttpServer } from '../src/main/httpServer'
-import { browseFolder, createFolderRemote, renameEntryRemote, uploadFile, downloadFile, downloadZip } from '../src/main/transferClient'
+import {
+  browseFolder,
+  createFolderRemote,
+  renameEntryRemote,
+  uploadFile,
+  uploadZip,
+  downloadFile,
+  downloadZip
+} from '../src/main/transferClient'
+
+/** srcDir配下の内容(ファイル/フォルダ)をトップレベルエントリとしてzip化する(production側のupload-filesと同じ形式) */
+function zipDirectoryContents(srcDir: string, destZipPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(destZipPath)
+    const archive = archiver('zip', { zlib: { level: 6 } })
+    output.on('close', () => resolve())
+    archive.on('error', reject)
+    archive.pipe(output)
+    for (const name of fs.readdirSync(srcDir)) {
+      const full = path.join(srcDir, name)
+      if (fs.statSync(full).isDirectory()) archive.directory(full, name)
+      else archive.file(full, { name })
+    }
+    void archive.finalize()
+  })
+}
 
 function getText(port: number, path: string): Promise<{ status: number; contentType: string | undefined; body: string }> {
   return new Promise((resolve, reject) => {
@@ -291,6 +317,61 @@ test('download-zipは存在しないパスを含むと404になる', async () =>
     await assert.rejects(() =>
       downloadZip({ address: '127.0.0.1', port, relPaths: [`${label}/does-not-exist.txt`], destPath: zipPath })
     )
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('upload-zipでフォルダとファイルをまとめてアップロードすると、階層構造を保ったまま展開・配置される', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    // アップロード元(ローカルのドロップ元を模したソース)を用意: sub-folder/a.txt と b.txt
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'landrop-upload-src-'))
+    fs.mkdirSync(path.join(srcDir, 'sub-folder'))
+    fs.writeFileSync(path.join(srcDir, 'sub-folder', 'a.txt'), 'A')
+    fs.writeFileSync(path.join(srcDir, 'b.txt'), 'B')
+
+    const zipPath = path.join(os.tmpdir(), `landrop-upload-zip-${Date.now()}.zip`)
+    await zipDirectoryContents(srcDir, zipPath)
+
+    await uploadZip({ address: '127.0.0.1', port, relPath: label, zipFilePath: zipPath, size: fs.statSync(zipPath).size })
+
+    assert.equal(fs.readFileSync(path.join(folderA, 'sub-folder', 'a.txt'), 'utf-8'), 'A')
+    assert.equal(fs.readFileSync(path.join(folderA, 'b.txt'), 'utf-8'), 'B')
+
+    fs.rmSync(srcDir, { recursive: true, force: true })
+    fs.rmSync(zipPath, { force: true })
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('upload-zipは同名の既存フォルダ/ファイルと衝突すると連番を振って回避する', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.writeFileSync(path.join(folderA, 'dup.txt'), 'existing')
+
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'landrop-upload-dup-src-'))
+    fs.writeFileSync(path.join(srcDir, 'dup.txt'), 'new')
+
+    const zipPath = path.join(os.tmpdir(), `landrop-upload-dup-zip-${Date.now()}.zip`)
+    await zipDirectoryContents(srcDir, zipPath)
+
+    await uploadZip({ address: '127.0.0.1', port, relPath: label, zipFilePath: zipPath, size: fs.statSync(zipPath).size })
+
+    assert.equal(fs.readFileSync(path.join(folderA, 'dup.txt'), 'utf-8'), 'existing')
+    assert.equal(fs.readFileSync(path.join(folderA, 'dup (1).txt'), 'utf-8'), 'new')
+
+    fs.rmSync(srcDir, { recursive: true, force: true })
+    fs.rmSync(zipPath, { force: true })
   } finally {
     await server.stop()
     fs.rmSync(folderA, { recursive: true, force: true })

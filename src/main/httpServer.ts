@@ -2,9 +2,12 @@
 // （Electron非依存、http/fsのみ使用）
 import http from 'node:http'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import archiver from 'archiver'
+import extractZip from 'extract-zip'
 import { browseShared, resolveSharedEntry, resolveSafePath, createFolder, renameEntry, isValidEntryName } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { renderWebUiHtml } from './webUi'
@@ -68,6 +71,7 @@ export class HttpServer extends EventEmitter {
       if (req.method === 'GET' && url.pathname === '/api/download') return this.handleDownload(res, url)
       if (req.method === 'GET' && url.pathname === '/api/download-zip') return this.handleDownloadZip(res, url)
       if (req.method === 'POST' && url.pathname === '/api/upload') return void this.handleUpload(req, res, url)
+      if (req.method === 'POST' && url.pathname === '/api/upload-zip') return void this.handleUploadZip(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/mkdir') return void this.handleMkdir(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/rename') return void this.handleRename(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/chat') return void this.handleChat(req, res)
@@ -220,6 +224,47 @@ export class HttpServer extends EventEmitter {
           size: fs.statSync(finalPath).size
         })
       })
+    })
+  }
+
+  /** zipにまとめたファイル/フォルダをまとめて受け取り、展開して共有フォルダに配置する(フォルダ単位・複数選択アップロード用) */
+  private async handleUploadZip(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+    const relPath = url.searchParams.get('path') ?? ''
+    const resolved = resolveSharedEntry(this.getSharedFolders(), relPath)
+    const dir = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
+    if (!dir || !fs.existsSync(dir)) {
+      this.sendJson(res, 400, { ok: false, error: 'invalid-request' })
+      return
+    }
+
+    const tempZipPath = path.join(os.tmpdir(), `landrop-upload-${randomUUID()}.zip`)
+    const writeStream = fs.createWriteStream(tempZipPath)
+
+    req.on('error', () => {
+      writeStream.destroy()
+      fs.rm(tempZipPath, { force: true }, () => {})
+      if (!res.headersSent) this.sendJson(res, 500, { ok: false, error: 'upload-failed' })
+    })
+
+    req.pipe(writeStream)
+
+    writeStream.on('finish', async () => {
+      const tempExtractDir = path.join(os.tmpdir(), `landrop-upload-extract-${randomUUID()}`)
+      try {
+        await extractZip(tempZipPath, { dir: tempExtractDir })
+        for (const name of fs.readdirSync(tempExtractDir)) {
+          const src = path.join(tempExtractDir, name)
+          const dest = resolveUniquePath(dir, name)
+          fs.cpSync(src, dest, { recursive: true })
+        }
+        this.sendJson(res, 200, { ok: true })
+        this.emit('upload-received', { fromAddress: req.socket.remoteAddress ?? '', relPath, fileName: '', size: 0 })
+      } catch (err) {
+        this.sendJson(res, 500, { ok: false, error: String(err) })
+      } finally {
+        fs.rm(tempZipPath, { force: true }, () => {})
+        fs.rm(tempExtractDir, { recursive: true, force: true }, () => {})
+      }
     })
   }
 
