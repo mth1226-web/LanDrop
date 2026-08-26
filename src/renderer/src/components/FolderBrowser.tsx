@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BrowseEntry, EntryMetadata } from '../../../shared/types'
+import type { BrowseEntry, EntryMetadata, SortMode } from '../../../shared/types'
 import { joinRelPath, pathSegments } from '../store'
 import { formatBytes, hexToRgba } from '../utils/format'
 import { getPreviewKind } from '../utils/previewKind'
+import { markInternalDragStart, markInternalDragEnd, isInternalDragActive } from '../utils/internalDrag'
+import { sortEntries } from '../utils/sortEntries'
 import InputDialog from './InputDialog'
 import EntryDetailsDialog from './EntryDetailsDialog'
 
@@ -15,6 +17,8 @@ interface Props {
   isLoading: boolean
   isSelf: boolean
   accentColor?: string
+  sortMode: SortMode
+  customOrder: string[]
   onNavigate: (path: string) => void
   onUploadFiles: (filePaths: string[]) => void
   onCreateFolder: (name: string) => void
@@ -25,6 +29,8 @@ interface Props {
   onSetDownloadFolderOverride: (label: string) => void
   onRemoveDownloadFolderOverride: (label: string) => void
   onPreviewEntry: (entry: BrowseEntry) => void
+  onChangeSortMode: (mode: SortMode) => void
+  onMoveEntry: (name: string, direction: 'up' | 'down') => void
 }
 
 export default function FolderBrowser({
@@ -36,6 +42,8 @@ export default function FolderBrowser({
   isLoading,
   isSelf,
   accentColor,
+  sortMode,
+  customOrder,
   onNavigate,
   onUploadFiles,
   onCreateFolder,
@@ -45,7 +53,9 @@ export default function FolderBrowser({
   onSaveMetadata,
   onSetDownloadFolderOverride,
   onRemoveDownloadFolderOverride,
-  onPreviewEntry
+  onPreviewEntry,
+  onChangeSortMode,
+  onMoveEntry
 }: Props): JSX.Element {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false)
@@ -74,6 +84,8 @@ export default function FolderBrowser({
   function handleDrop(e: React.DragEvent<HTMLDivElement>): void {
     e.preventDefault()
     setIsDragOver(false)
+    // 自分の項目をOSへドラッグ中に同じウィンドウ内へ落とした場合は、複製されてしまうため無視する
+    if (isInternalDragActive()) return
     if (isAtRoot) return
     const paths = Array.from(e.dataTransfer.files).map((file) => window.electronAPI.getPathForFile(file))
     if (paths.length > 0) onUploadFiles(paths)
@@ -89,11 +101,13 @@ export default function FolderBrowser({
 
   function handleDragStartToOs(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
     e.preventDefault()
+    markInternalDragStart()
     window.electronAPI.startDrag(joinRelPath(currentPath, entry.name))
   }
 
   const hiddenCount = entries.filter((e) => metadata[e.name]?.hidden).length
-  const visibleEntries = entries.filter((e) => showHidden || !metadata[e.name]?.hidden)
+  const sortedEntries = sortEntries(entries, sortMode, customOrder)
+  const visibleEntries = sortedEntries.filter((e) => showHidden || !metadata[e.name]?.hidden)
   const selectedEntries = visibleEntries.filter((e) => selectedNames.has(e.name))
 
   const selfStyle: React.CSSProperties =
@@ -107,7 +121,7 @@ export default function FolderBrowser({
       style={selfStyle}
       onDragOver={(e) => {
         e.preventDefault()
-        if (!isAtRoot) setIsDragOver(true)
+        if (!isAtRoot && !isInternalDragActive()) setIsDragOver(true)
       }}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
@@ -127,6 +141,26 @@ export default function FolderBrowser({
           ))}
         </nav>
         <div className="folder-browser-actions">
+          <div className="sort-mode-switch">
+            <button
+              className={sortMode === 'name' ? 'button secondary small active' : 'button secondary small'}
+              onClick={() => onChangeSortMode('name')}
+            >
+              名前順
+            </button>
+            <button
+              className={sortMode === 'date' ? 'button secondary small active' : 'button secondary small'}
+              onClick={() => onChangeSortMode('date')}
+            >
+              日付順
+            </button>
+            <button
+              className={sortMode === 'manual' ? 'button secondary small active' : 'button secondary small'}
+              onClick={() => onChangeSortMode('manual')}
+            >
+              マニュアル
+            </button>
+          </div>
           {hiddenCount > 0 && (
             <button className="button secondary small" onClick={() => setShowHidden((v) => !v)}>
               {showHidden ? '非表示項目を隠す' : `非表示項目を表示（${hiddenCount}）`}
@@ -171,6 +205,7 @@ export default function FolderBrowser({
                 style={meta?.color ? { borderLeft: `3px solid ${meta.color}` } : undefined}
                 draggable={isSelf}
                 onDragStart={isSelf ? (e) => handleDragStartToOs(e, entry) : undefined}
+                onDragEnd={isSelf ? () => markInternalDragEnd() : undefined}
               >
                 {!isSelf && (
                   <input
@@ -205,6 +240,24 @@ export default function FolderBrowser({
                   {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
                 </button>
                 <div className="entry-actions">
+                  {sortMode === 'manual' && (
+                    <span className="entry-reorder">
+                      <button
+                        className="button secondary small"
+                        title="上へ移動"
+                        onClick={() => onMoveEntry(entry.name, 'up')}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        className="button secondary small"
+                        title="下へ移動"
+                        onClick={() => onMoveEntry(entry.name, 'down')}
+                      >
+                        ↓
+                      </button>
+                    </span>
+                  )}
                   {!isSelf && (
                     <button className="button secondary small" onClick={() => onDownload([entry])}>
                       ダウンロード

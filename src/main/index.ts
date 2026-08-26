@@ -42,6 +42,8 @@ import {
   getDirectLog
 } from './chatStore'
 import type { ChatStore } from './chatStore'
+import { sortOrderKey, loadSortOrderStore, saveSortOrderStore, getCustomOrder, setCustomOrder } from './sortOrderStore'
+import type { SortOrderStore } from './sortOrderStore'
 import type { AppSettings, BrowseEntry, ChatMessage, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
@@ -51,6 +53,7 @@ let discovery: Discovery | null = null
 let ownHttpPort = 0
 let entryMetadataStore: EntryMetadataStore = {}
 let chatStore: ChatStore = { broadcast: [], direct: {} }
+let sortOrderStore: SortOrderStore = {}
 
 const activityStore = new ActivityStore()
 
@@ -64,6 +67,10 @@ function getEntryMetadataFilePath(): string {
 
 function getChatFilePath(): string {
   return join(app.getPath('userData'), 'landrop-chat.json')
+}
+
+function getSortOrderFilePath(): string {
+  return join(app.getPath('userData'), 'landrop-sort-order.json')
 }
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -285,6 +292,26 @@ function registerIpcHandlers(): void {
     saveSettings(getSettingsFilePath(), settings)
     return settings
   })
+
+  ipcMain.handle('set-sort-mode', (_event, mode: 'name' | 'date' | 'manual') => {
+    settings = { ...settings, sortMode: mode }
+    saveSettings(getSettingsFilePath(), settings)
+    return settings
+  })
+
+  ipcMain.handle('get-custom-order', (_event, args: { peerDeviceId: string; relPath: string }) =>
+    getCustomOrder(sortOrderStore, sortOrderKey(args.peerDeviceId, args.relPath))
+  )
+
+  ipcMain.handle(
+    'set-custom-order',
+    (_event, args: { peerDeviceId: string; relPath: string; order: string[] }) => {
+      const key = sortOrderKey(args.peerDeviceId, args.relPath)
+      sortOrderStore = setCustomOrder(sortOrderStore, key, args.order)
+      saveSortOrderStore(getSortOrderFilePath(), sortOrderStore)
+      return getCustomOrder(sortOrderStore, key)
+    }
+  )
 
   ipcMain.handle('choose-shared-folder', async () => {
     if (!mainWindow) return null
@@ -704,7 +731,8 @@ function loadOrInitSettings(): AppSettings {
     downloadFolder: app.getPath('downloads'),
     accentColor: '#4caf6a',
     preferredNetworkInterface: null,
-    downloadFolderOverrides: {}
+    downloadFolderOverrides: {},
+    sortMode: 'name'
   }
   const loaded = loadSettings(filePath, defaults)
   if (isFirstRun) saveSettings(filePath, loaded)
@@ -723,6 +751,7 @@ app.whenReady().then(async () => {
   settings = loadOrInitSettings()
   entryMetadataStore = loadEntryMetadataStore(getEntryMetadataFilePath())
   chatStore = loadChatStore(getChatFilePath())
+  sortOrderStore = loadSortOrderStore(getSortOrderFilePath())
   mainWindow = createWindow()
   registerIpcHandlers()
   await startNetworking()

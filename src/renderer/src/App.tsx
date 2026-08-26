@@ -9,7 +9,8 @@ import ChatDialog from './components/ChatDialog'
 import PreviewDialog from './components/PreviewDialog'
 import type { PreviewSource } from './components/PreviewDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
-import type { BrowseEntry, EntryMetadata, Peer } from '../../shared/types'
+import type { BrowseEntry, EntryMetadata, Peer, SortMode } from '../../shared/types'
+import { effectiveManualOrder, moveNameInOrder } from './utils/sortEntries'
 
 export default function App(): JSX.Element {
   const peers = useAppStore((s) => s.peers)
@@ -39,6 +40,7 @@ export default function App(): JSX.Element {
   const [showPreview, setShowPreview] = useState(false)
   const [previewSource, setPreviewSource] = useState<PreviewSource | null>(null)
   const [ownPreviewBaseUrl, setOwnPreviewBaseUrl] = useState<string | null>(null)
+  const [customOrder, setCustomOrderState] = useState<string[]>([])
 
   useEffect(() => {
     window.electronAPI.getPeers().then(setPeers)
@@ -84,6 +86,7 @@ export default function App(): JSX.Element {
       .then(setEntryMetadata)
       .catch(() => setEntries([]))
       .finally(() => setLoadingEntries(false))
+    window.electronAPI.getCustomOrder(selectedPeerId, currentPath).then(setCustomOrderState)
   }
 
   const isSelf = selectedPeerId === settings?.deviceId
@@ -187,6 +190,19 @@ export default function App(): JSX.Element {
     setSettings(updated)
   }
 
+  async function handleChangeSortMode(mode: SortMode): Promise<void> {
+    const updated = await window.electronAPI.setSortMode(mode)
+    setSettings(updated)
+  }
+
+  async function handleMoveEntry(name: string, direction: 'up' | 'down'): Promise<void> {
+    if (!selectedPeerId) return
+    const order = effectiveManualOrder(entries, customOrder)
+    const nextOrder = moveNameInOrder(order, name, direction)
+    const saved = await window.electronAPI.setCustomOrder(selectedPeerId, currentPath, nextOrder)
+    setCustomOrderState(saved)
+  }
+
   function handleCheckForUpdate(): void {
     void window.electronAPI.checkForUpdate()
   }
@@ -230,6 +246,8 @@ export default function App(): JSX.Element {
               isLoading={isLoadingEntries}
               isSelf={isSelf}
               accentColor={settings?.accentColor}
+              sortMode={settings?.sortMode ?? 'name'}
+              customOrder={customOrder}
               onNavigate={setCurrentPath}
               onUploadFiles={handleUploadFiles}
               onCreateFolder={handleCreateFolder}
@@ -240,6 +258,8 @@ export default function App(): JSX.Element {
               onSetDownloadFolderOverride={handleSetDownloadFolderOverride}
               onRemoveDownloadFolderOverride={handleRemoveDownloadFolderOverride}
               onPreviewEntry={handlePreviewEntry}
+              onChangeSortMode={handleChangeSortMode}
+              onMoveEntry={handleMoveEntry}
             />
           ) : (
             <div className="panel folder-browser">

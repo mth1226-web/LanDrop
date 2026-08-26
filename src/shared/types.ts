@@ -65,6 +65,8 @@ export interface TransferActivity {
   errorMessage?: string
 }
 
+export type SortMode = 'name' | 'date' | 'manual'
+
 export interface AppSettings {
   deviceId: string
   deviceName: string
@@ -74,6 +76,7 @@ export interface AppSettings {
   preferredNetworkInterface: string | null
   /** 共有フォルダのラベル(ルート直下のフォルダ名) -> ダウンロード先の個別設定 */
   downloadFolderOverrides: Record<string, string>
+  sortMode: SortMode
 }
 
 export interface NetworkInterfaceOption {

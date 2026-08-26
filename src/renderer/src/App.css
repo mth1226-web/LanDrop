@@ -226,6 +226,16 @@ body {
   gap: 8px;
 }
 
+.sort-mode-switch {
+  display: flex;
+  gap: 2px;
+}
+
+.entry-reorder {
+  display: flex;
+  gap: 2px;
+}
+
 .entry-list {
   list-style: none;
   margin: 0;
@@ -402,6 +412,12 @@ body {
 .button.small {
   padding: 3px 9px;
   font-size: 11px;
+}
+
+.button.active {
+  background: #5878e8;
+  border-color: #5878e8;
+  color: #ffffff;
 }
 
 .modal-overlay {

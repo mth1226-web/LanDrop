@@ -12,7 +12,8 @@ const DEFAULTS = {
   downloadFolder: '/default/downloads',
   accentColor: '#4caf6a',
   preferredNetworkInterface: null,
-  downloadFolderOverrides: {}
+  downloadFolderOverrides: {},
+  sortMode: 'name' as const
 }
 
 test('ファイルが存在しない場合はデフォルト値を返す', () => {
@@ -29,7 +30,8 @@ test('保存した内容をそのまま読み込める', () => {
     downloadFolder: 'C:/Users/me/Downloads',
     accentColor: '#ff8800',
     preferredNetworkInterface: 'Ethernet',
-    downloadFolderOverrides: { Videos: 'D:/Videos' }
+    downloadFolderOverrides: { Videos: 'D:/Videos' },
+    sortMode: 'date' as const
   }
   saveSettings(filePath, settings)
   assert.deepEqual(loadSettings(filePath, DEFAULTS), settings)
@@ -53,7 +55,8 @@ test('一部フィールドが欠けている場合は該当フィールドの�
     downloadFolder: DEFAULTS.downloadFolder,
     accentColor: DEFAULTS.accentColor,
     preferredNetworkInterface: DEFAULTS.preferredNetworkInterface,
-    downloadFolderOverrides: DEFAULTS.downloadFolderOverrides
+    downloadFolderOverrides: DEFAULTS.downloadFolderOverrides,
+    sortMode: DEFAULTS.sortMode
   })
   fs.rmSync(filePath, { force: true })
 })
@@ -83,5 +86,19 @@ test('downloadFolderOverridesが不正な形式の場合はデフォルトにフ
   const filePath = path.join(os.tmpdir(), `landrop-settings-bad-overrides-${Date.now()}.json`)
   fs.writeFileSync(filePath, JSON.stringify({ downloadFolderOverrides: ['not', 'a', 'map'] }), 'utf-8')
   assert.deepEqual(loadSettings(filePath, DEFAULTS).downloadFolderOverrides, {})
+  fs.rmSync(filePath, { force: true })
+})
+
+test('sortModeが不正な値の場合はデフォルトにフォールバックする', () => {
+  const filePath = path.join(os.tmpdir(), `landrop-settings-bad-sortmode-${Date.now()}.json`)
+  fs.writeFileSync(filePath, JSON.stringify({ sortMode: 'invalid' }), 'utf-8')
+  assert.equal(loadSettings(filePath, DEFAULTS).sortMode, DEFAULTS.sortMode)
+  fs.rmSync(filePath, { force: true })
+})
+
+test('sortModeが有効な値の場合はそれを尊重する', () => {
+  const filePath = path.join(os.tmpdir(), `landrop-settings-sortmode-${Date.now()}.json`)
+  fs.writeFileSync(filePath, JSON.stringify({ sortMode: 'manual' }), 'utf-8')
+  assert.equal(loadSettings(filePath, DEFAULTS).sortMode, 'manual')
   fs.rmSync(filePath, { force: true })
 })

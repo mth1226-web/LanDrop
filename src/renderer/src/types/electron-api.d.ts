@@ -5,6 +5,7 @@ import type {
   EntryMetadata,
   NetworkInterfaceOption,
   Peer,
+  SortMode,
   TransferActivity,
   UpdateState
 } from '../../../shared/types'
@@ -16,6 +17,9 @@ export interface ElectronAPI {
   getSettings: () => Promise<AppSettings>
   setSettings: (settings: { deviceName: string }) => Promise<AppSettings>
   setAccentColor: (color: string) => Promise<AppSettings>
+  setSortMode: (mode: SortMode) => Promise<AppSettings>
+  getCustomOrder: (peerDeviceId: string, relPath: string) => Promise<string[]>
+  setCustomOrder: (peerDeviceId: string, relPath: string, order: string[]) => Promise<string[]>
   chooseSharedFolder: () => Promise<AppSettings | null>
   addSharedFolders: (paths: string[]) => Promise<AppSettings>
   removeSharedFolder: (folderPath: string) => Promise<AppSettings>

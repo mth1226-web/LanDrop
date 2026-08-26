@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AppSettings } from '../../../shared/types'
+import { isInternalDragActive } from '../utils/internalDrag'
 import PhoneAccessCard from './PhoneAccessCard'
 
 const ACCENT_COLOR_PRESETS = ['#4caf6a', '#5878e8', '#e0a030', '#d05a5a', '#a05ae0', '#30b8c0', '#e05a9c']
@@ -33,6 +34,7 @@ export default function SettingsDialog({
   function handleDrop(e: React.DragEvent<HTMLDivElement>): void {
     e.preventDefault()
     setIsDragOver(false)
+    if (isInternalDragActive()) return
     const paths = Array.from(e.dataTransfer.files).map((file) => window.electronAPI.getPathForFile(file))
     if (paths.length > 0) onAddSharedFolders(paths)
   }
@@ -68,7 +70,7 @@ export default function SettingsDialog({
             className={isDragOver ? 'shared-folder-dropzone drag-over' : 'shared-folder-dropzone'}
             onDragOver={(e) => {
               e.preventDefault()
-              setIsDragOver(true)
+              if (!isInternalDragActive()) setIsDragOver(true)
             }}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleDrop}

@@ -6,6 +6,7 @@ import type {
   EntryMetadata,
   NetworkInterfaceOption,
   Peer,
+  SortMode,
   TransferActivity,
   UpdateState
 } from '../shared/types'
@@ -17,6 +18,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('get-settings'),
   setSettings: (settings: { deviceName: string }): Promise<AppSettings> => ipcRenderer.invoke('set-settings', settings),
   setAccentColor: (color: string): Promise<AppSettings> => ipcRenderer.invoke('set-accent-color', color),
+  setSortMode: (mode: SortMode): Promise<AppSettings> => ipcRenderer.invoke('set-sort-mode', mode),
+  getCustomOrder: (peerDeviceId: string, relPath: string): Promise<string[]> =>
+    ipcRenderer.invoke('get-custom-order', { peerDeviceId, relPath }),
+  setCustomOrder: (peerDeviceId: string, relPath: string, order: string[]): Promise<string[]> =>
+    ipcRenderer.invoke('set-custom-order', { peerDeviceId, relPath, order }),
   chooseSharedFolder: (): Promise<AppSettings | null> => ipcRenderer.invoke('choose-shared-folder'),
   addSharedFolders: (paths: string[]): Promise<AppSettings> => ipcRenderer.invoke('add-shared-folders', paths),
   removeSharedFolder: (folderPath: string): Promise<AppSettings> => ipcRenderer.invoke('remove-shared-folder', folderPath),

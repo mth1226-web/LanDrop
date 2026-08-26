@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getPreviewKind } from '../utils/previewKind'
+import { isInternalDragActive } from '../utils/internalDrag'
 
 export interface PreviewSource {
   url: string
@@ -19,6 +20,7 @@ export default function PreviewDialog({ source, onShowLocalFile, onClose }: Prop
   function handleDrop(e: React.DragEvent<HTMLDivElement>): void {
     e.preventDefault()
     setIsDragOver(false)
+    if (isInternalDragActive()) return
     const file = e.dataTransfer.files[0]
     if (file) onShowLocalFile(file)
   }
@@ -36,7 +38,7 @@ export default function PreviewDialog({ source, onShowLocalFile, onClose }: Prop
           className={isDragOver ? 'preview-area drag-over' : 'preview-area'}
           onDragOver={(e) => {
             e.preventDefault()
-            setIsDragOver(true)
+            if (!isInternalDragActive()) setIsDragOver(true)
           }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}

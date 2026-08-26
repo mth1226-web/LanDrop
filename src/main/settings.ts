@@ -1,9 +1,10 @@
 // 設定ファイルの読み書き（Electron非依存、fs/pathのみ使用。保存先パスはindex.tsがapp.getPath()で決める）
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AppSettings } from '../shared/types'
+import type { AppSettings, SortMode } from '../shared/types'
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
+const SORT_MODES: SortMode[] = ['name', 'date', 'manual']
 
 export function loadSettings(settingsFilePath: string, defaults: AppSettings): AppSettings {
   try {
@@ -34,7 +35,11 @@ export function loadSettings(settingsFilePath: string, defaults: AppSettings): A
         !Array.isArray(parsed.downloadFolderOverrides) &&
         Object.values(parsed.downloadFolderOverrides).every((v) => typeof v === 'string')
           ? parsed.downloadFolderOverrides
-          : defaults.downloadFolderOverrides
+          : defaults.downloadFolderOverrides,
+      sortMode:
+        typeof parsed.sortMode === 'string' && SORT_MODES.includes(parsed.sortMode as SortMode)
+          ? (parsed.sortMode as SortMode)
+          : defaults.sortMode
     }
   } catch {
     return defaults
