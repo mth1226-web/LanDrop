@@ -52,11 +52,28 @@ export interface AppSettings {
   downloadFolder: string
   accentColor: string
   preferredNetworkInterface: string | null
+  /** 共有フォルダのラベル(ルート直下のフォルダ名) -> ダウンロード先の個別設定 */
+  downloadFolderOverrides: Record<string, string>
 }
 
 export interface NetworkInterfaceOption {
   name: string
   address: string
+}
+
+/** ファイル/フォルダごとのローカルな整理情報（自分のPC内だけのメモ。相手のファイル自体は変更しない） */
+export interface EntryMetadata {
+  hidden: boolean
+  color: string | null
+  memo: string
+  imported: boolean
+}
+
+export const DEFAULT_ENTRY_METADATA: EntryMetadata = {
+  hidden: false,
+  color: null,
+  memo: '',
+  imported: false
 }
 
 export type UpdatePhase =

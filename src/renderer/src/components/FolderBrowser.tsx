@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BrowseEntry } from '../../../shared/types'
+import type { BrowseEntry, EntryMetadata } from '../../../shared/types'
 import { joinRelPath, pathSegments } from '../store'
 import { formatBytes, hexToRgba } from '../utils/format'
 import InputDialog from './InputDialog'
+import EntryDetailsDialog from './EntryDetailsDialog'
 
 interface Props {
   peerName: string
   currentPath: string
   entries: BrowseEntry[]
+  metadata: Record<string, EntryMetadata>
+  downloadFolderOverrides: Record<string, string>
   isLoading: boolean
   isSelf: boolean
   accentColor?: string
@@ -17,12 +20,17 @@ interface Props {
   onRename: (oldName: string, newName: string) => void
   onDownload: (entries: BrowseEntry[]) => void
   onRevealLocal: (entry: BrowseEntry) => void
+  onSaveMetadata: (entryName: string, patch: Partial<EntryMetadata>) => void
+  onSetDownloadFolderOverride: (label: string) => void
+  onRemoveDownloadFolderOverride: (label: string) => void
 }
 
 export default function FolderBrowser({
   peerName,
   currentPath,
   entries,
+  metadata,
+  downloadFolderOverrides,
   isLoading,
   isSelf,
   accentColor,
@@ -31,12 +39,17 @@ export default function FolderBrowser({
   onCreateFolder,
   onRename,
   onDownload,
-  onRevealLocal
+  onRevealLocal,
+  onSaveMetadata,
+  onSetDownloadFolderOverride,
+  onRemoveDownloadFolderOverride
 }: Props): JSX.Element {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false)
   const [renamingEntry, setRenamingEntry] = useState<BrowseEntry | null>(null)
+  const [detailsEntry, setDetailsEntry] = useState<BrowseEntry | null>(null)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
+  const [showHidden, setShowHidden] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const segments = pathSegments(currentPath)
@@ -71,7 +84,14 @@ export default function FolderBrowser({
     e.target.value = ''
   }
 
-  const selectedEntries = entries.filter((e) => selectedNames.has(e.name))
+  function handleDragStartToOs(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+    e.preventDefault()
+    window.electronAPI.startDrag(joinRelPath(currentPath, entry.name))
+  }
+
+  const hiddenCount = entries.filter((e) => metadata[e.name]?.hidden).length
+  const visibleEntries = entries.filter((e) => showHidden || !metadata[e.name]?.hidden)
+  const selectedEntries = visibleEntries.filter((e) => selectedNames.has(e.name))
 
   const selfStyle: React.CSSProperties =
     isSelf && accentColor
@@ -104,6 +124,11 @@ export default function FolderBrowser({
           ))}
         </nav>
         <div className="folder-browser-actions">
+          {hiddenCount > 0 && (
+            <button className="button secondary small" onClick={() => setShowHidden((v) => !v)}>
+              {showHidden ? '非表示項目を隠す' : `非表示項目を表示（${hiddenCount}）`}
+            </button>
+          )}
           {!isSelf && selectedEntries.length > 0 && (
             <button className="button primary" onClick={() => onDownload(selectedEntries)}>
               選択した{selectedEntries.length}件をダウンロード
@@ -125,7 +150,7 @@ export default function FolderBrowser({
 
       {isLoading ? (
         <p className="empty-hint">読み込み中…</p>
-      ) : entries.length === 0 ? (
+      ) : visibleEntries.length === 0 ? (
         <p className="empty-hint">
           {isAtRoot
             ? '共有フォルダがありません（設定画面から追加できます）'
@@ -133,44 +158,81 @@ export default function FolderBrowser({
         </p>
       ) : (
         <ul className="entry-list">
-          {entries.map((entry) => (
-            <li key={entry.name} className="entry-item">
-              {!isSelf && (
-                <input
-                  type="checkbox"
-                  className="entry-checkbox"
-                  checked={selectedNames.has(entry.name)}
-                  onChange={() => toggleSelected(entry.name)}
-                />
-              )}
-              <button
-                className="entry-main"
-                onClick={() => entry.isDirectory && onNavigate(joinRelPath(currentPath, entry.name))}
-                disabled={!entry.isDirectory}
+          {visibleEntries.map((entry) => {
+            const meta = metadata[entry.name]
+            const override = downloadFolderOverrides[entry.name]
+            return (
+              <li
+                key={entry.name}
+                className={meta?.hidden ? 'entry-item entry-hidden' : 'entry-item'}
+                style={meta?.color ? { borderLeft: `3px solid ${meta.color}` } : undefined}
+                draggable={isSelf}
+                onDragStart={isSelf ? (e) => handleDragStartToOs(e, entry) : undefined}
               >
-                <span className="entry-icon">{entry.isDirectory ? '📁' : '📄'}</span>
-                <span className="entry-name">{entry.name}</span>
-                {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
-              </button>
-              <div className="entry-actions">
                 {!isSelf && (
-                  <button className="button secondary small" onClick={() => onDownload([entry])}>
-                    ダウンロード
-                  </button>
+                  <input
+                    type="checkbox"
+                    className="entry-checkbox"
+                    checked={selectedNames.has(entry.name)}
+                    onChange={() => toggleSelected(entry.name)}
+                  />
                 )}
-                {!entry.isDirectory && isSelf && (
-                  <button className="button secondary small" onClick={() => onRevealLocal(entry)}>
-                    フォルダで表示
+                <button
+                  className="entry-main"
+                  onClick={() => entry.isDirectory && onNavigate(joinRelPath(currentPath, entry.name))}
+                  disabled={!entry.isDirectory}
+                >
+                  <span className="entry-icon">{entry.isDirectory ? '📁' : '📄'}</span>
+                  <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
+                  {meta?.imported && (
+                    <span className="entry-badge" title="取り込み済み">
+                      ✓
+                    </span>
+                  )}
+                  {meta?.memo && (
+                    <span className="entry-badge" title={meta.memo}>
+                      📝
+                    </span>
+                  )}
+                  {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
+                </button>
+                <div className="entry-actions">
+                  {!isSelf && (
+                    <button className="button secondary small" onClick={() => onDownload([entry])}>
+                      ダウンロード
+                    </button>
+                  )}
+                  {!entry.isDirectory && isSelf && (
+                    <button className="button secondary small" onClick={() => onRevealLocal(entry)}>
+                      フォルダで表示
+                    </button>
+                  )}
+                  {isAtRoot &&
+                    (override ? (
+                      <button
+                        className="button secondary small"
+                        title={override}
+                        onClick={() => onRemoveDownloadFolderOverride(entry.name)}
+                      >
+                        保存先を解除
+                      </button>
+                    ) : (
+                      <button className="button secondary small" onClick={() => onSetDownloadFolderOverride(entry.name)}>
+                        保存先を設定
+                      </button>
+                    ))}
+                  <button className="button secondary small" onClick={() => setDetailsEntry(entry)}>
+                    詳細
                   </button>
-                )}
-                {!isAtRoot && (
-                  <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
-                    名前変更
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
+                  {!isAtRoot && (
+                    <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
+                      名前変更
+                    </button>
+                  )}
+                </div>
+              </li>
+            )
+          })}
         </ul>
       )}
 
@@ -198,6 +260,15 @@ export default function FolderBrowser({
             setRenamingEntry(null)
           }}
           onCancel={() => setRenamingEntry(null)}
+        />
+      )}
+
+      {detailsEntry && (
+        <EntryDetailsDialog
+          entryName={detailsEntry.name}
+          metadata={metadata[detailsEntry.name] ?? { hidden: false, color: null, memo: '', imported: false }}
+          onSave={(patch) => onSaveMetadata(detailsEntry.name, patch)}
+          onClose={() => setDetailsEntry(null)}
         />
       )}
     </div>

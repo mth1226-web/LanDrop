@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, Menu, MenuItemConstructorOptions } from 'electron'
 import { join, basename, posix } from 'path'
 import { existsSync, statSync, copyFileSync } from 'fs'
 import { randomUUID } from 'crypto'
@@ -12,6 +12,15 @@ import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSaf
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
 import { getLanAddress, getLanInterfaces } from './localNetwork'
+import {
+  entryMetadataKey,
+  loadEntryMetadataStore,
+  saveEntryMetadataStore,
+  setEntryMetadata,
+  getEntryMetadataForChildren
+} from './entryMetadata'
+import type { EntryMetadataStore } from './entryMetadata'
+import { resolveDownloadDestination } from './downloadDestination'
 import type { AppSettings, BrowseEntry, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
@@ -19,11 +28,16 @@ let settings: AppSettings
 let httpServer: HttpServer | null = null
 let discovery: Discovery | null = null
 let ownHttpPort = 0
+let entryMetadataStore: EntryMetadataStore = {}
 
 const activityStore = new ActivityStore()
 
 function getSettingsFilePath(): string {
   return join(app.getPath('userData'), 'landrop-settings.json')
+}
+
+function getEntryMetadataFilePath(): string {
+  return join(app.getPath('userData'), 'landrop-entry-metadata.json')
 }
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -359,7 +373,8 @@ function registerIpcHandlers(): void {
     'download-file',
     async (_event, args: { peerDeviceId: string; relPath: string; fileName: string; size: number }) => {
       const peer = findPeerOrThrow(args.peerDeviceId)
-      const destPath = resolveUniquePath(settings.downloadFolder, args.fileName)
+      const destFolder = resolveDownloadDestination(args.relPath, [args.fileName], settings.downloadFolderOverrides, settings.downloadFolder)
+      const destPath = resolveUniquePath(destFolder, args.fileName)
       const id = randomUUID()
       activityStore.create({
         id,
@@ -396,10 +411,17 @@ function registerIpcHandlers(): void {
     async (_event, args: { peerDeviceId: string; relPath: string; entries: BrowseEntry[] }) => {
       const peer = findPeerOrThrow(args.peerDeviceId)
 
+      const destFolder = resolveDownloadDestination(
+        args.relPath,
+        args.entries.map((e) => e.name),
+        settings.downloadFolderOverrides,
+        settings.downloadFolder
+      )
+
       // ファイル1件だけの選択は、zip化せず直接ダウンロードする(高速・シンプル)
       if (args.entries.length === 1 && !args.entries[0].isDirectory) {
         const entry = args.entries[0]
-        const destPath = resolveUniquePath(settings.downloadFolder, entry.name)
+        const destPath = resolveUniquePath(destFolder, entry.name)
         const id = randomUUID()
         activityStore.create({
           id,
@@ -433,7 +455,7 @@ function registerIpcHandlers(): void {
       // 複数選択、またはフォルダを含む場合はzipにまとめてダウンロードする
       const zipName =
         args.entries.length === 1 ? `${args.entries[0].name}.zip` : `LanDrop-download-${Date.now()}.zip`
-      const destPath = resolveUniquePath(settings.downloadFolder, zipName)
+      const destPath = resolveUniquePath(destFolder, zipName)
       const totalBytes = args.entries.reduce((sum, e) => sum + e.size, 0)
       const id = randomUUID()
       activityStore.create({
@@ -489,6 +511,58 @@ function registerIpcHandlers(): void {
       void shell.openExternal('x-apple.systempreferences:com.apple.preference.network')
     }
   })
+
+  ipcMain.handle(
+    'get-entry-metadata-for-children',
+    (_event, args: { peerDeviceId: string; parentRelPath: string; childNames: string[] }) =>
+      getEntryMetadataForChildren(entryMetadataStore, args.peerDeviceId, args.parentRelPath, args.childNames)
+  )
+
+  ipcMain.handle(
+    'set-entry-metadata',
+    (
+      _event,
+      args: { peerDeviceId: string; relPath: string; patch: { hidden?: boolean; color?: string | null; memo?: string; imported?: boolean } }
+    ) => {
+      const key = entryMetadataKey(args.peerDeviceId, args.relPath)
+      entryMetadataStore = setEntryMetadata(entryMetadataStore, key, args.patch)
+      saveEntryMetadataStore(getEntryMetadataFilePath(), entryMetadataStore)
+      return getEntryMetadataForChildren(entryMetadataStore, args.peerDeviceId, '', [args.relPath])[args.relPath]
+    }
+  )
+
+  ipcMain.handle('choose-download-folder-override', async (_event, label: string) => {
+    if (!mainWindow) return settings
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
+    if (result.canceled || result.filePaths.length === 0) return settings
+    settings = {
+      ...settings,
+      downloadFolderOverrides: { ...settings.downloadFolderOverrides, [label]: result.filePaths[0] }
+    }
+    saveSettings(getSettingsFilePath(), settings)
+    return settings
+  })
+
+  ipcMain.handle('remove-download-folder-override', (_event, label: string) => {
+    const next = { ...settings.downloadFolderOverrides }
+    delete next[label]
+    settings = { ...settings, downloadFolderOverrides: next }
+    saveSettings(getSettingsFilePath(), settings)
+    return settings
+  })
+
+  // 自分の共有フォルダ内のファイル/フォルダをOS(エクスプローラー等)へネイティブドラッグでコピーする
+  ipcMain.on('start-drag', (event, relPath: string) => {
+    const resolved = resolveSharedEntry(settings.sharedFolders, relPath)
+    const target = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
+    if (!target || !existsSync(target)) return
+    event.sender.startDrag({
+      file: target,
+      icon: nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+      )
+    })
+  })
 }
 
 function loadOrInitSettings(): AppSettings {
@@ -500,7 +574,8 @@ function loadOrInitSettings(): AppSettings {
     sharedFolders: [join(app.getPath('documents'), 'LanDrop共有')],
     downloadFolder: app.getPath('downloads'),
     accentColor: '#4caf6a',
-    preferredNetworkInterface: null
+    preferredNetworkInterface: null,
+    downloadFolderOverrides: {}
   }
   const loaded = loadSettings(filePath, defaults)
   if (isFirstRun) saveSettings(filePath, loaded)
@@ -517,6 +592,7 @@ function loadOrInitSettings(): AppSettings {
 app.whenReady().then(async () => {
   buildApplicationMenu()
   settings = loadOrInitSettings()
+  entryMetadataStore = loadEntryMetadataStore(getEntryMetadataFilePath())
   mainWindow = createWindow()
   registerIpcHandlers()
   await startNetworking()

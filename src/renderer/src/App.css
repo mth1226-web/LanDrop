@@ -579,6 +579,13 @@ body {
   border-color: #e8e8f0;
 }
 
+.accent-swatch.none {
+  background: #242432;
+  color: #9090a8;
+  font-size: 12px;
+  line-height: 22px;
+}
+
 .accent-color-picker {
   width: 32px;
   height: 26px;
@@ -587,4 +594,50 @@ body {
   border-radius: 6px;
   background: none;
   cursor: pointer;
+}
+
+.entry-details-dialog {
+  width: 380px;
+}
+
+.entry-memo-textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #3a3a4c;
+  background: #14141c;
+  color: #e8e8f0;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.checkbox-field input {
+  width: 16px;
+  height: 16px;
+  accent-color: #5878e8;
+}
+
+.entry-hidden {
+  opacity: 0.45;
+}
+
+.entry-imported {
+  text-decoration: line-through;
+  color: #9090a8;
+}
+
+.entry-badge {
+  font-size: 12px;
+  flex-shrink: 0;
 }

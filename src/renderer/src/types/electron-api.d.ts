@@ -1,4 +1,12 @@
-import type { AppSettings, BrowseEntry, NetworkInterfaceOption, Peer, TransferActivity, UpdateState } from '../../../shared/types'
+import type {
+  AppSettings,
+  BrowseEntry,
+  EntryMetadata,
+  NetworkInterfaceOption,
+  Peer,
+  TransferActivity,
+  UpdateState
+} from '../../../shared/types'
 
 export interface ElectronAPI {
   getPathForFile: (file: File) => string
@@ -27,6 +35,18 @@ export interface ElectronAPI {
   listNetworkInterfaces: () => Promise<NetworkInterfaceOption[]>
   setPreferredNetworkInterface: (name: string | null) => Promise<AppSettings>
   openNetworkSettings: () => Promise<void>
+
+  getEntryMetadataForChildren: (
+    peerDeviceId: string,
+    parentRelPath: string,
+    childNames: string[]
+  ) => Promise<Record<string, EntryMetadata>>
+  setEntryMetadata: (peerDeviceId: string, relPath: string, patch: Partial<EntryMetadata>) => Promise<EntryMetadata>
+
+  chooseDownloadFolderOverride: (label: string) => Promise<AppSettings>
+  removeDownloadFolderOverride: (label: string) => Promise<AppSettings>
+
+  startDrag: (relPath: string) => void
 
   onPeersChanged: (callback: (peers: Peer[]) => void) => () => void
   onActivityUpdated: (callback: (activity: TransferActivity) => void) => () => void

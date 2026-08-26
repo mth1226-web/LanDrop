@@ -1,5 +1,13 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppSettings, BrowseEntry, NetworkInterfaceOption, Peer, TransferActivity, UpdateState } from '../shared/types'
+import type {
+  AppSettings,
+  BrowseEntry,
+  EntryMetadata,
+  NetworkInterfaceOption,
+  Peer,
+  TransferActivity,
+  UpdateState
+} from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
@@ -35,6 +43,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setPreferredNetworkInterface: (name: string | null): Promise<AppSettings> =>
     ipcRenderer.invoke('set-preferred-network-interface', name),
   openNetworkSettings: (): Promise<void> => ipcRenderer.invoke('open-network-settings'),
+
+  getEntryMetadataForChildren: (
+    peerDeviceId: string,
+    parentRelPath: string,
+    childNames: string[]
+  ): Promise<Record<string, EntryMetadata>> =>
+    ipcRenderer.invoke('get-entry-metadata-for-children', { peerDeviceId, parentRelPath, childNames }),
+  setEntryMetadata: (peerDeviceId: string, relPath: string, patch: Partial<EntryMetadata>): Promise<EntryMetadata> =>
+    ipcRenderer.invoke('set-entry-metadata', { peerDeviceId, relPath, patch }),
+
+  chooseDownloadFolderOverride: (label: string): Promise<AppSettings> =>
+    ipcRenderer.invoke('choose-download-folder-override', label),
+  removeDownloadFolderOverride: (label: string): Promise<AppSettings> =>
+    ipcRenderer.invoke('remove-download-folder-override', label),
+
+  startDrag: (relPath: string): void => ipcRenderer.send('start-drag', relPath),
 
   onPeersChanged: (callback: (peers: Peer[]) => void) => {
     const handler = (_: unknown, peers: Peer[]): void => callback(peers)

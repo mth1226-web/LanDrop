@@ -27,7 +27,14 @@ export function loadSettings(settingsFilePath: string, defaults: AppSettings): A
       preferredNetworkInterface:
         typeof parsed.preferredNetworkInterface === 'string' && parsed.preferredNetworkInterface
           ? parsed.preferredNetworkInterface
-          : defaults.preferredNetworkInterface
+          : defaults.preferredNetworkInterface,
+      downloadFolderOverrides:
+        typeof parsed.downloadFolderOverrides === 'object' &&
+        parsed.downloadFolderOverrides !== null &&
+        !Array.isArray(parsed.downloadFolderOverrides) &&
+        Object.values(parsed.downloadFolderOverrides).every((v) => typeof v === 'string')
+          ? parsed.downloadFolderOverrides
+          : defaults.downloadFolderOverrides
     }
   } catch {
     return defaults

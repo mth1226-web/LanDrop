@@ -6,7 +6,7 @@ import ActivityList from './components/ActivityList'
 import SettingsDialog from './components/SettingsDialog'
 import UpdateDialog from './components/UpdateDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
-import type { BrowseEntry, Peer } from '../../shared/types'
+import type { BrowseEntry, EntryMetadata, Peer } from '../../shared/types'
 
 export default function App(): JSX.Element {
   const peers = useAppStore((s) => s.peers)
@@ -15,6 +15,7 @@ export default function App(): JSX.Element {
   const selectedPeerId = useAppStore((s) => s.selectedPeerId)
   const currentPath = useAppStore((s) => s.currentPath)
   const entries = useAppStore((s) => s.entries)
+  const entryMetadata = useAppStore((s) => s.entryMetadata)
   const isLoadingEntries = useAppStore((s) => s.isLoadingEntries)
   const updateState = useAppStore((s) => s.updateState)
 
@@ -24,6 +25,8 @@ export default function App(): JSX.Element {
   const selectPeer = useAppStore((s) => s.selectPeer)
   const setCurrentPath = useAppStore((s) => s.setCurrentPath)
   const setEntries = useAppStore((s) => s.setEntries)
+  const setEntryMetadata = useAppStore((s) => s.setEntryMetadata)
+  const upsertEntryMetadata = useAppStore((s) => s.upsertEntryMetadata)
   const setLoadingEntries = useAppStore((s) => s.setLoadingEntries)
   const setUpdateState = useAppStore((s) => s.setUpdateState)
 
@@ -62,7 +65,15 @@ export default function App(): JSX.Element {
     setLoadingEntries(true)
     window.electronAPI
       .browseFolder(selectedPeerId, currentPath)
-      .then(setEntries)
+      .then((list) => {
+        setEntries(list)
+        return window.electronAPI.getEntryMetadataForChildren(
+          selectedPeerId,
+          currentPath,
+          list.map((e) => e.name)
+        )
+      })
+      .then(setEntryMetadata)
       .catch(() => setEntries([]))
       .finally(() => setLoadingEntries(false))
   }
@@ -140,6 +151,22 @@ export default function App(): JSX.Element {
     setSettings(updated)
   }
 
+  async function handleSaveMetadata(entryName: string, patch: Partial<EntryMetadata>): Promise<void> {
+    if (!selectedPeerId) return
+    const updated = await window.electronAPI.setEntryMetadata(selectedPeerId, joinRelPath(currentPath, entryName), patch)
+    upsertEntryMetadata(entryName, updated)
+  }
+
+  async function handleSetDownloadFolderOverride(label: string): Promise<void> {
+    const updated = await window.electronAPI.chooseDownloadFolderOverride(label)
+    setSettings(updated)
+  }
+
+  async function handleRemoveDownloadFolderOverride(label: string): Promise<void> {
+    const updated = await window.electronAPI.removeDownloadFolderOverride(label)
+    setSettings(updated)
+  }
+
   function handleCheckForUpdate(): void {
     void window.electronAPI.checkForUpdate()
   }
@@ -172,6 +199,8 @@ export default function App(): JSX.Element {
               peerName={isSelf ? `${selectedPeer.deviceName}（自分）` : selectedPeer.deviceName}
               currentPath={currentPath}
               entries={entries}
+              metadata={entryMetadata}
+              downloadFolderOverrides={settings?.downloadFolderOverrides ?? {}}
               isLoading={isLoadingEntries}
               isSelf={isSelf}
               accentColor={settings?.accentColor}
@@ -181,6 +210,9 @@ export default function App(): JSX.Element {
               onRename={handleRename}
               onDownload={handleDownload}
               onRevealLocal={handleRevealLocal}
+              onSaveMetadata={handleSaveMetadata}
+              onSetDownloadFolderOverride={handleSetDownloadFolderOverride}
+              onRemoveDownloadFolderOverride={handleRemoveDownloadFolderOverride}
             />
           ) : (
             <div className="panel folder-browser">
