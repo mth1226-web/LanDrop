@@ -65,7 +65,7 @@ export default function FolderBrowser({
   const [detailsEntry, setDetailsEntry] = useState<BrowseEntry | null>(null)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [showHidden, setShowHidden] = useState(false)
-  const [showMemoInline, setShowMemoInline] = useState(false)
+  const [showMemoInline, setShowMemoInline] = useState(true)
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -239,7 +239,7 @@ export default function FolderBrowser({
               className={showMemoInline ? 'button secondary small active' : 'button secondary small'}
               onClick={() => setShowMemoInline((v) => !v)}
             >
-              メモを行に表示
+              {showMemoInline ? 'メモを行から隠す' : 'メモを行に表示'}
             </button>
           )}
           {!isSelf && selectedEntries.length > 0 && (
