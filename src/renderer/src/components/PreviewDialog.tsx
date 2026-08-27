@@ -1,11 +1,7 @@
 import { useState } from 'react'
+import type { PreviewSource } from '../../../shared/types'
 import { getPreviewKind } from '../utils/previewKind'
 import { isInternalDragActive } from '../utils/internalDrag'
-
-export interface PreviewSource {
-  url: string
-  name: string
-}
 
 interface Props {
   source: PreviewSource | null

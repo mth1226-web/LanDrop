@@ -5,6 +5,7 @@ import type {
   EntryMetadata,
   NetworkInterfaceOption,
   Peer,
+  PreviewSource,
   SortMode,
   TransferActivity,
   UpdateState
@@ -36,6 +37,10 @@ export interface ElectronAPI {
 
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>
+  openSettingsWindow: () => Promise<void>
+  openChatWindow: () => Promise<void>
+  openUpdateWindow: () => Promise<void>
+  openPreviewWindow: (source: PreviewSource | null) => Promise<void>
   getLanUrl: () => Promise<string | null>
   getOwnPreviewBaseUrl: () => Promise<string | null>
   listNetworkInterfaces: () => Promise<NetworkInterfaceOption[]>
@@ -63,6 +68,8 @@ export interface ElectronAPI {
   onPeerUploaded: (callback: () => void) => () => void
   onUpdateState: (callback: (state: UpdateState) => void) => () => void
   onChatMessage: (callback: (payload: { target: string; message: ChatMessage }) => void) => () => void
+  onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
+  onPreviewSource: (callback: (source: PreviewSource) => void) => () => void
 }
 
 declare global {

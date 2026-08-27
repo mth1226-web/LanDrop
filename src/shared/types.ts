@@ -115,3 +115,8 @@ export interface UpdateState {
   latestVersion?: string
   errorMessage?: string
 }
+
+export interface PreviewSource {
+  url: string
+  name: string
+}

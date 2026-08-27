@@ -3,11 +3,6 @@ import { useAppStore, joinRelPath } from './store'
 import PeerList from './components/PeerList'
 import FolderBrowser from './components/FolderBrowser'
 import ActivityList from './components/ActivityList'
-import SettingsDialog from './components/SettingsDialog'
-import UpdateDialog from './components/UpdateDialog'
-import ChatDialog from './components/ChatDialog'
-import PreviewDialog from './components/PreviewDialog'
-import type { PreviewSource } from './components/PreviewDialog'
 import FirewallHintBanner from './components/FirewallHintBanner'
 import type { BrowseEntry, EntryMetadata, Peer, SortMode } from '../../shared/types'
 import { effectiveManualOrder, moveNameInOrder, moveNameRelativeTo } from './utils/sortEntries'
@@ -34,11 +29,6 @@ export default function App(): JSX.Element {
   const setLoadingEntries = useAppStore((s) => s.setLoadingEntries)
   const setUpdateState = useAppStore((s) => s.setUpdateState)
 
-  const [showSettings, setShowSettings] = useState(false)
-  const [showUpdate, setShowUpdate] = useState(false)
-  const [showChat, setShowChat] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewSource, setPreviewSource] = useState<PreviewSource | null>(null)
   const [ownPreviewBaseUrl, setOwnPreviewBaseUrl] = useState<string | null>(null)
   const [customOrder, setCustomOrderState] = useState<string[]>([])
 
@@ -49,6 +39,7 @@ export default function App(): JSX.Element {
     const unsubscribeActivity = window.electronAPI.onActivityUpdated(upsertActivity)
     const unsubscribeUploaded = window.electronAPI.onPeerUploaded(() => reloadEntries())
     const unsubscribeUpdate = window.electronAPI.onUpdateState(setUpdateState)
+    const unsubscribeSettings = window.electronAPI.onSettingsChanged(setSettings)
     void window.electronAPI.checkForUpdate()
     window.electronAPI.getOwnPreviewBaseUrl().then(setOwnPreviewBaseUrl)
     return () => {
@@ -56,6 +47,7 @@ export default function App(): JSX.Element {
       unsubscribeActivity()
       unsubscribeUploaded()
       unsubscribeUpdate()
+      unsubscribeSettings()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -67,8 +59,9 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     reloadEntries()
+    // 別ウインドウの設定画面で共有フォルダが追加/削除された場合もここで再読み込みする
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPeerId, currentPath])
+  }, [selectedPeerId, currentPath, settings?.sharedFolders])
 
   function reloadEntries(): void {
     if (!selectedPeerId) return
@@ -127,51 +120,10 @@ export default function App(): JSX.Element {
   function handlePreviewEntry(entry: BrowseEntry): void {
     if (!previewBaseUrl) return
     const relPath = joinRelPath(currentPath, entry.name)
-    setPreviewSource({ url: `${previewBaseUrl}/api/download?path=${encodeURIComponent(relPath)}`, name: entry.name })
-    setShowPreview(true)
-  }
-
-  function handleShowLocalPreviewFile(file: File): void {
-    setPreviewSource({ url: URL.createObjectURL(file), name: file.name })
-  }
-
-  async function handleSaveDeviceName(deviceName: string): Promise<void> {
-    const updated = await window.electronAPI.setSettings({ deviceName })
-    setSettings(updated)
-  }
-
-  async function handleChooseSharedFolder(): Promise<void> {
-    const updated = await window.electronAPI.chooseSharedFolder()
-    if (updated) {
-      setSettings(updated)
-      reloadEntries()
-    }
-  }
-
-  async function handleAddSharedFolders(paths: string[]): Promise<void> {
-    const updated = await window.electronAPI.addSharedFolders(paths)
-    setSettings(updated)
-    reloadEntries()
-  }
-
-  async function handleRemoveSharedFolder(folderPath: string): Promise<void> {
-    const updated = await window.electronAPI.removeSharedFolder(folderPath)
-    setSettings(updated)
-    reloadEntries()
-  }
-
-  function handleOpenFolder(folderPath: string): void {
-    void window.electronAPI.openFolder(folderPath)
-  }
-
-  async function handleChooseDownloadFolder(): Promise<void> {
-    const updated = await window.electronAPI.chooseDownloadFolder()
-    if (updated) setSettings(updated)
-  }
-
-  async function handleChangeAccentColor(color: string): Promise<void> {
-    const updated = await window.electronAPI.setAccentColor(color)
-    setSettings(updated)
+    void window.electronAPI.openPreviewWindow({
+      url: `${previewBaseUrl}/api/download?path=${encodeURIComponent(relPath)}`,
+      name: entry.name
+    })
   }
 
   async function handleSaveMetadata(entryName: string, patch: Partial<EntryMetadata>): Promise<void> {
@@ -211,29 +163,21 @@ export default function App(): JSX.Element {
     setCustomOrderState(saved)
   }
 
-  function handleCheckForUpdate(): void {
-    void window.electronAPI.checkForUpdate()
-  }
-
-  function handleApplyUpdate(): void {
-    void window.electronAPI.applyUpdate()
-  }
-
   return (
     <div className="app">
       <header className="app-header">
         <h1>LanDrop</h1>
         <div className="app-header-actions">
-          <button className="button secondary" onClick={() => setShowPreview(true)}>
+          <button className="button secondary" onClick={() => void window.electronAPI.openPreviewWindow(null)}>
             プレビュー
           </button>
-          <button className="button secondary" onClick={() => setShowChat(true)}>
+          <button className="button secondary" onClick={() => void window.electronAPI.openChatWindow()}>
             チャット
           </button>
-          <button className="button secondary" onClick={() => setShowUpdate(true)}>
+          <button className="button secondary" onClick={() => void window.electronAPI.openUpdateWindow()}>
             アップデート{updateState.phase === 'available' && <span className="update-dot" />}
           </button>
-          <button className="button secondary" onClick={() => setShowSettings(true)}>
+          <button className="button secondary" onClick={() => void window.electronAPI.openSettingsWindow()}>
             設定
           </button>
         </div>
@@ -278,49 +222,6 @@ export default function App(): JSX.Element {
           <ActivityList activities={activityList} />
         </div>
       </main>
-
-      {showSettings && settings && (
-        <SettingsDialog
-          settings={settings}
-          onSaveDeviceName={handleSaveDeviceName}
-          onAddSharedFolders={handleAddSharedFolders}
-          onChooseSharedFolder={handleChooseSharedFolder}
-          onRemoveSharedFolder={handleRemoveSharedFolder}
-          onOpenFolder={handleOpenFolder}
-          onChooseDownloadFolder={handleChooseDownloadFolder}
-          onChangeAccentColor={handleChangeAccentColor}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
-
-      {showUpdate && (
-        <UpdateDialog
-          updateState={updateState}
-          onCheck={handleCheckForUpdate}
-          onApply={handleApplyUpdate}
-          onClose={() => setShowUpdate(false)}
-        />
-      )}
-
-      {showChat && settings && (
-        <ChatDialog
-          peers={peers}
-          selfDeviceId={settings.deviceId}
-          selfDeviceName={settings.deviceName}
-          onClose={() => setShowChat(false)}
-        />
-      )}
-
-      {showPreview && (
-        <PreviewDialog
-          source={previewSource}
-          onShowLocalFile={handleShowLocalPreviewFile}
-          onClose={() => {
-            setShowPreview(false)
-            setPreviewSource(null)
-          }}
-        />
-      )}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import type {
   EntryMetadata,
   NetworkInterfaceOption,
   Peer,
+  PreviewSource,
   SortMode,
   TransferActivity,
   UpdateState
@@ -45,6 +46,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),
+
+  openSettingsWindow: (): Promise<void> => ipcRenderer.invoke('open-settings-window'),
+  openChatWindow: (): Promise<void> => ipcRenderer.invoke('open-chat-window'),
+  openUpdateWindow: (): Promise<void> => ipcRenderer.invoke('open-update-window'),
+  openPreviewWindow: (source: PreviewSource | null): Promise<void> => ipcRenderer.invoke('open-preview-window', source),
   getLanUrl: (): Promise<string | null> => ipcRenderer.invoke('get-lan-url'),
   getOwnPreviewBaseUrl: (): Promise<string | null> => ipcRenderer.invoke('get-own-preview-base-url'),
   listNetworkInterfaces: (): Promise<NetworkInterfaceOption[]> => ipcRenderer.invoke('list-network-interfaces'),
@@ -97,5 +103,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_: unknown, payload: { target: string; message: ChatMessage }): void => callback(payload)
     ipcRenderer.on('chat-message', handler)
     return () => ipcRenderer.removeListener('chat-message', handler)
+  },
+  onSettingsChanged: (callback: (settings: AppSettings) => void) => {
+    const handler = (_: unknown, settings: AppSettings): void => callback(settings)
+    ipcRenderer.on('settings-changed', handler)
+    return () => ipcRenderer.removeListener('settings-changed', handler)
+  },
+  onPreviewSource: (callback: (source: PreviewSource) => void) => {
+    const handler = (_: unknown, source: PreviewSource): void => callback(source)
+    ipcRenderer.on('preview-source', handler)
+    return () => ipcRenderer.removeListener('preview-source', handler)
   }
 })

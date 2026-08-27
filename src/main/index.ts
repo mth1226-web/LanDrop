@@ -47,6 +47,10 @@ import type { SortOrderStore } from './sortOrderStore'
 import type { AppSettings, BrowseEntry, ChatMessage, UpdateState } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null
+let chatWindow: BrowserWindow | null = null
+let updateWindow: BrowserWindow | null = null
+let previewWindow: BrowserWindow | null = null
 let settings: AppSettings
 let httpServer: HttpServer | null = null
 let discovery: Discovery | null = null
@@ -73,8 +77,19 @@ function getSortOrderFilePath(): string {
   return join(app.getPath('userData'), 'landrop-sort-order.json')
 }
 
+/** 開いている全ウィンドウ(メイン+設定/チャット/アップデート/プレビューの各子ウィンドウ)へ送る */
 function sendToRenderer(channel: string, ...args: unknown[]): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args)
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, ...args)
+  }
+}
+
+/** 設定を更新・保存し、変更を全ウィンドウへ通知したうえで返す */
+function updateSettings(next: AppSettings): AppSettings {
+  settings = next
+  saveSettings(getSettingsFilePath(), settings)
+  sendToRenderer('settings-changed', settings)
+  return settings
 }
 
 function broadcastActivity(id: string): void {
@@ -119,7 +134,19 @@ async function applyUpdateAndNotify(): Promise<void> {
   }
 }
 
-function createWindow(): BrowserWindow {
+/** レンダラーの同一index.htmlを、URLハッシュ(#settings等)で表示内容を切り替えて読み込む */
+function loadRoute(win: BrowserWindow, route: string): void {
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}${route ? `#${route}` : ''}`)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/index.html'), route ? { hash: route } : undefined)
+  }
+}
+
+function createWindow(
+  route: string,
+  options: Partial<Electron.BrowserWindowConstructorOptions> = {}
+): BrowserWindow {
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
@@ -127,6 +154,7 @@ function createWindow(): BrowserWindow {
     minHeight: 520,
     title: 'LanDrop',
     backgroundColor: '#14141c',
+    ...options,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -136,14 +164,84 @@ function createWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
-
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  loadRoute(win, route)
 
   return win
+}
+
+function openSettingsWindow(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.focus()
+    return
+  }
+  settingsWindow = createWindow('settings', {
+    width: 480,
+    height: 760,
+    minWidth: 420,
+    minHeight: 500,
+    title: 'LanDrop - 設定'
+  })
+  settingsWindow.on('closed', () => {
+    settingsWindow = null
+  })
+}
+
+function openChatWindow(): void {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.focus()
+    return
+  }
+  chatWindow = createWindow('chat', {
+    width: 680,
+    height: 560,
+    minWidth: 480,
+    minHeight: 400,
+    title: 'LanDrop - チャット'
+  })
+  chatWindow.on('closed', () => {
+    chatWindow = null
+  })
+}
+
+function openUpdateWindow(): void {
+  if (updateWindow && !updateWindow.isDestroyed()) {
+    updateWindow.focus()
+    return
+  }
+  updateWindow = createWindow('update', {
+    width: 440,
+    height: 300,
+    minWidth: 440,
+    minHeight: 300,
+    resizable: false,
+    title: 'LanDrop - アップデート'
+  })
+  updateWindow.on('closed', () => {
+    updateWindow = null
+  })
+}
+
+function openPreviewWindow(source: { url: string; name: string } | null): void {
+  if (previewWindow && !previewWindow.isDestroyed()) {
+    previewWindow.focus()
+    if (source) previewWindow.webContents.send('preview-source', source)
+    return
+  }
+  previewWindow = createWindow('preview', {
+    width: 900,
+    height: 680,
+    minWidth: 480,
+    minHeight: 400,
+    title: 'LanDrop - プレビュー'
+  })
+  previewWindow.on('closed', () => {
+    previewWindow = null
+  })
+  if (source) {
+    previewWindow.webContents.once('did-finish-load', () => {
+      previewWindow?.webContents.send('preview-source', source)
+    })
+  }
 }
 
 function buildApplicationMenu(): void {
@@ -262,9 +360,7 @@ function addSharedFolders(paths: string[]): AppSettings {
     }
   })
   const merged = Array.from(new Set([...settings.sharedFolders, ...validPaths]))
-  settings = { ...settings, sharedFolders: merged }
-  saveSettings(getSettingsFilePath(), settings)
-  return settings
+  return updateSettings({ ...settings, sharedFolders: merged })
 }
 
 /** 自分の共有フォルダ群からrelPathを実パスへ解決する。見つからなければ例外を投げる */
@@ -280,23 +376,18 @@ function registerIpcHandlers(): void {
   ipcMain.handle('get-settings', () => settings)
 
   ipcMain.handle('set-settings', (_event, patch: { deviceName: string }) => {
-    settings = { ...settings, deviceName: patch.deviceName }
-    saveSettings(getSettingsFilePath(), settings)
-    discovery?.setDeviceName(settings.deviceName)
-    return settings
+    const next = updateSettings({ ...settings, deviceName: patch.deviceName })
+    discovery?.setDeviceName(next.deviceName)
+    return next
   })
 
   ipcMain.handle('set-accent-color', (_event, color: string) => {
     if (!/^#[0-9a-fA-F]{6}$/.test(color)) return settings
-    settings = { ...settings, accentColor: color }
-    saveSettings(getSettingsFilePath(), settings)
-    return settings
+    return updateSettings({ ...settings, accentColor: color })
   })
 
   ipcMain.handle('set-sort-mode', (_event, mode: 'name' | 'date' | 'manual') => {
-    settings = { ...settings, sortMode: mode }
-    saveSettings(getSettingsFilePath(), settings)
-    return settings
+    return updateSettings({ ...settings, sortMode: mode })
   })
 
   ipcMain.handle('get-custom-order', (_event, args: { peerDeviceId: string; relPath: string }) =>
@@ -313,9 +404,10 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('choose-shared-folder', async () => {
-    if (!mainWindow) return null
-    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'multiSelections'] })
+  ipcMain.handle('choose-shared-folder', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+    if (!owner) return null
+    const result = await dialog.showOpenDialog(owner, { properties: ['openDirectory', 'multiSelections'] })
     if (result.canceled || result.filePaths.length === 0) return null
     return addSharedFolders(result.filePaths)
   })
@@ -323,18 +415,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle('add-shared-folders', (_event, paths: string[]) => addSharedFolders(paths))
 
   ipcMain.handle('remove-shared-folder', (_event, folderPath: string) => {
-    settings = { ...settings, sharedFolders: settings.sharedFolders.filter((f) => f !== folderPath) }
-    saveSettings(getSettingsFilePath(), settings)
-    return settings
+    return updateSettings({ ...settings, sharedFolders: settings.sharedFolders.filter((f) => f !== folderPath) })
   })
 
-  ipcMain.handle('choose-download-folder', async () => {
-    if (!mainWindow) return null
-    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
+  ipcMain.handle('choose-download-folder', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+    if (!owner) return null
+    const result = await dialog.showOpenDialog(owner, { properties: ['openDirectory'] })
     if (result.canceled || result.filePaths.length === 0) return null
-    settings = { ...settings, downloadFolder: result.filePaths[0] }
-    saveSettings(getSettingsFilePath(), settings)
-    return settings
+    return updateSettings({ ...settings, downloadFolder: result.filePaths[0] })
   })
 
   ipcMain.handle('browse-folder', async (_event, args: { peerDeviceId: string; relPath: string }) => {
@@ -619,9 +708,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('list-network-interfaces', () => getLanInterfaces())
 
   ipcMain.handle('set-preferred-network-interface', (_event, name: string | null) => {
-    settings = { ...settings, preferredNetworkInterface: name }
-    saveSettings(getSettingsFilePath(), settings)
-    return settings
+    return updateSettings({ ...settings, preferredNetworkInterface: name })
   })
 
   ipcMain.handle('open-network-settings', () => {
@@ -651,24 +738,21 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('choose-download-folder-override', async (_event, label: string) => {
-    if (!mainWindow) return settings
-    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
+  ipcMain.handle('choose-download-folder-override', async (event, label: string) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+    if (!owner) return settings
+    const result = await dialog.showOpenDialog(owner, { properties: ['openDirectory'] })
     if (result.canceled || result.filePaths.length === 0) return settings
-    settings = {
+    return updateSettings({
       ...settings,
       downloadFolderOverrides: { ...settings.downloadFolderOverrides, [label]: result.filePaths[0] }
-    }
-    saveSettings(getSettingsFilePath(), settings)
-    return settings
+    })
   })
 
   ipcMain.handle('remove-download-folder-override', (_event, label: string) => {
     const next = { ...settings.downloadFolderOverrides }
     delete next[label]
-    settings = { ...settings, downloadFolderOverrides: next }
-    saveSettings(getSettingsFilePath(), settings)
-    return settings
+    return updateSettings({ ...settings, downloadFolderOverrides: next })
   })
 
   // 自分の共有フォルダ内のファイル/フォルダをOS(エクスプローラー等)へネイティブドラッグでコピーする
@@ -719,6 +803,13 @@ function registerIpcHandlers(): void {
     chatStore = target === 'broadcast' ? clearBroadcastLog(chatStore) : clearDirectLog(chatStore, target)
     saveChatStore(getChatFilePath(), chatStore)
   })
+
+  ipcMain.handle('open-settings-window', () => openSettingsWindow())
+  ipcMain.handle('open-chat-window', () => openChatWindow())
+  ipcMain.handle('open-update-window', () => openUpdateWindow())
+  ipcMain.handle('open-preview-window', (_event, source: { url: string; name: string } | null) =>
+    openPreviewWindow(source)
+  )
 }
 
 function loadOrInitSettings(): AppSettings {
@@ -752,12 +843,12 @@ app.whenReady().then(async () => {
   entryMetadataStore = loadEntryMetadataStore(getEntryMetadataFilePath())
   chatStore = loadChatStore(getChatFilePath())
   sortOrderStore = loadSortOrderStore(getSortOrderFilePath())
-  mainWindow = createWindow()
+  mainWindow = createWindow('')
   registerIpcHandlers()
   await startNetworking()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow('')
   })
 })
 
