@@ -270,6 +270,23 @@ body {
   gap: 8px;
 }
 
+.entry-thumb {
+  flex-shrink: 0;
+  width: 200px;
+  max-height: 200px;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #101018;
+}
+
+.entry-thumb-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .entry-drop-before {
   box-shadow: inset 0 2px 0 0 #5878e8;
 }

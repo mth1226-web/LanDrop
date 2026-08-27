@@ -197,6 +197,7 @@ export default function App(): JSX.Element {
               downloadFolderOverrides={settings?.downloadFolderOverrides ?? {}}
               isLoading={isLoadingEntries}
               isSelf={isSelf}
+              previewBaseUrl={previewBaseUrl}
               accentColor={settings?.accentColor}
               sortMode={settings?.sortMode ?? 'name'}
               customOrder={customOrder}

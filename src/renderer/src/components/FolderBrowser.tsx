@@ -16,6 +16,7 @@ interface Props {
   downloadFolderOverrides: Record<string, string>
   isLoading: boolean
   isSelf: boolean
+  previewBaseUrl: string | null
   accentColor?: string
   sortMode: SortMode
   customOrder: string[]
@@ -42,6 +43,7 @@ export default function FolderBrowser({
   downloadFolderOverrides,
   isLoading,
   isSelf,
+  previewBaseUrl,
   accentColor,
   sortMode,
   customOrder,
@@ -274,6 +276,10 @@ export default function FolderBrowser({
           {visibleEntries.map((entry) => {
             const meta = metadata[entry.name]
             const override = downloadFolderOverrides[entry.name]
+            const thumbUrl =
+              !entry.isDirectory && previewBaseUrl && getPreviewKind(entry.name) === 'image'
+                ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, entry.name))}`
+                : null
             return (
               <li
                 key={entry.name}
@@ -296,6 +302,11 @@ export default function FolderBrowser({
                 onDragEnd={handleEntryDragEnd}
               >
                 <div className="entry-row">
+                  {thumbUrl && (
+                    <div className="entry-thumb">
+                      <img className="entry-thumb-media" src={thumbUrl} alt="" loading="lazy" />
+                    </div>
+                  )}
                   {!isSelf && (
                     <input
                       type="checkbox"
