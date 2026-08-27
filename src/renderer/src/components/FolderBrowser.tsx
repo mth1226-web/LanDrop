@@ -699,7 +699,8 @@ export default function FolderBrowser({
                             entry.name === selectedName ? 'column-browser-item selected' : 'column-browser-item'
                           }
                           style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
-                          onClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
+                          title="ダブルクリックで開く"
+                          onDoubleClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
                           disabled={!entry.isDirectory}
                         >
                           <span className="column-browser-icon">{entryIcon}</span>
@@ -722,12 +723,13 @@ export default function FolderBrowser({
                       columnFileSelection === entry.name ? 'column-browser-item selected' : 'column-browser-item'
                     }
                     style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
+                    title="ダブルクリックで開く"
                     onClick={() => {
-                      if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
-                      else setColumnFileSelection(entry.name)
+                      if (!entry.isDirectory) setColumnFileSelection(entry.name)
                     }}
                     onDoubleClick={() => {
-                      if (!entry.isDirectory && kind) onPreviewEntry(entry)
+                      if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                      else if (kind) onPreviewEntry(entry)
                     }}
                     onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
                   >
