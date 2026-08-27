@@ -13,7 +13,8 @@ const DEFAULTS = {
   accentColor: '#4caf6a',
   preferredNetworkInterface: null,
   downloadFolderOverrides: {},
-  sortMode: 'name' as const
+  sortMode: 'name' as const,
+  viewMode: 'details' as const
 }
 
 test('ファイルが存在しない場合はデフォルト値を返す', () => {
@@ -31,7 +32,8 @@ test('保存した内容をそのまま読み込める', () => {
     accentColor: '#ff8800',
     preferredNetworkInterface: 'Ethernet',
     downloadFolderOverrides: { Videos: 'D:/Videos' },
-    sortMode: 'date' as const
+    sortMode: 'date' as const,
+    viewMode: 'largeIcons' as const
   }
   saveSettings(filePath, settings)
   assert.deepEqual(loadSettings(filePath, DEFAULTS), settings)
@@ -56,7 +58,8 @@ test('一部フィールドが欠けている場合は該当フィールドの�
     accentColor: DEFAULTS.accentColor,
     preferredNetworkInterface: DEFAULTS.preferredNetworkInterface,
     downloadFolderOverrides: DEFAULTS.downloadFolderOverrides,
-    sortMode: DEFAULTS.sortMode
+    sortMode: DEFAULTS.sortMode,
+    viewMode: DEFAULTS.viewMode
   })
   fs.rmSync(filePath, { force: true })
 })
@@ -100,5 +103,19 @@ test('sortModeが有効な値の場合はそれを尊重する', () => {
   const filePath = path.join(os.tmpdir(), `landrop-settings-sortmode-${Date.now()}.json`)
   fs.writeFileSync(filePath, JSON.stringify({ sortMode: 'manual' }), 'utf-8')
   assert.equal(loadSettings(filePath, DEFAULTS).sortMode, 'manual')
+  fs.rmSync(filePath, { force: true })
+})
+
+test('viewModeが不正な値の場合はデフォルトにフォールバックする', () => {
+  const filePath = path.join(os.tmpdir(), `landrop-settings-bad-viewmode-${Date.now()}.json`)
+  fs.writeFileSync(filePath, JSON.stringify({ viewMode: 'invalid' }), 'utf-8')
+  assert.equal(loadSettings(filePath, DEFAULTS).viewMode, DEFAULTS.viewMode)
+  fs.rmSync(filePath, { force: true })
+})
+
+test('viewModeが有効な値の場合はそれを尊重する', () => {
+  const filePath = path.join(os.tmpdir(), `landrop-settings-viewmode-${Date.now()}.json`)
+  fs.writeFileSync(filePath, JSON.stringify({ viewMode: 'tiles' }), 'utf-8')
+  assert.equal(loadSettings(filePath, DEFAULTS).viewMode, 'tiles')
   fs.rmSync(filePath, { force: true })
 })

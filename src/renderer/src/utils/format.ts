@@ -7,6 +7,17 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
+export function formatDate(timestampMs: number): string {
+  if (!timestampMs) return ''
+  return new Date(timestampMs).toLocaleString('ja-JP', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 const STATUS_LABELS: Record<ActivityStatus, string> = {
   in_progress: '転送中',
   completed: '完了',

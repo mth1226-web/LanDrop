@@ -67,6 +67,17 @@ export interface TransferActivity {
 
 export type SortMode = 'name' | 'date' | 'manual'
 
+/** Windowsエクスプローラの表示モードに対応する8種類 */
+export type ViewMode =
+  | 'extraLargeIcons'
+  | 'largeIcons'
+  | 'mediumIcons'
+  | 'smallIcons'
+  | 'list'
+  | 'details'
+  | 'tiles'
+  | 'content'
+
 export interface AppSettings {
   deviceId: string
   deviceName: string
@@ -77,6 +88,7 @@ export interface AppSettings {
   /** 共有フォルダのラベル(ルート直下のフォルダ名) -> ダウンロード先の個別設定 */
   downloadFolderOverrides: Record<string, string>
   sortMode: SortMode
+  viewMode: ViewMode
 }
 
 export interface NetworkInterfaceOption {

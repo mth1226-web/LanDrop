@@ -9,7 +9,8 @@ import type {
   PreviewSource,
   SortMode,
   TransferActivity,
-  UpdateState
+  UpdateState,
+  ViewMode
 } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -20,6 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setSettings: (settings: { deviceName: string }): Promise<AppSettings> => ipcRenderer.invoke('set-settings', settings),
   setAccentColor: (color: string): Promise<AppSettings> => ipcRenderer.invoke('set-accent-color', color),
   setSortMode: (mode: SortMode): Promise<AppSettings> => ipcRenderer.invoke('set-sort-mode', mode),
+  setViewMode: (mode: ViewMode): Promise<AppSettings> => ipcRenderer.invoke('set-view-mode', mode),
+  showEntryContextMenu: (items: { id: string; label: string; disabled?: boolean }[]): Promise<string | null> =>
+    ipcRenderer.invoke('show-entry-context-menu', items),
   getCustomOrder: (peerDeviceId: string, relPath: string): Promise<string[]> =>
     ipcRenderer.invoke('get-custom-order', { peerDeviceId, relPath }),
   setCustomOrder: (peerDeviceId: string, relPath: string, order: string[]): Promise<string[]> =>

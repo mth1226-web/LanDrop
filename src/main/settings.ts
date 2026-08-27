@@ -1,10 +1,20 @@
 // 設定ファイルの読み書き（Electron非依存、fs/pathのみ使用。保存先パスはindex.tsがapp.getPath()で決める）
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AppSettings, SortMode } from '../shared/types'
+import type { AppSettings, SortMode, ViewMode } from '../shared/types'
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
 const SORT_MODES: SortMode[] = ['name', 'date', 'manual']
+const VIEW_MODES: ViewMode[] = [
+  'extraLargeIcons',
+  'largeIcons',
+  'mediumIcons',
+  'smallIcons',
+  'list',
+  'details',
+  'tiles',
+  'content'
+]
 
 export function loadSettings(settingsFilePath: string, defaults: AppSettings): AppSettings {
   try {
@@ -39,7 +49,11 @@ export function loadSettings(settingsFilePath: string, defaults: AppSettings): A
       sortMode:
         typeof parsed.sortMode === 'string' && SORT_MODES.includes(parsed.sortMode as SortMode)
           ? (parsed.sortMode as SortMode)
-          : defaults.sortMode
+          : defaults.sortMode,
+      viewMode:
+        typeof parsed.viewMode === 'string' && VIEW_MODES.includes(parsed.viewMode as ViewMode)
+          ? (parsed.viewMode as ViewMode)
+          : defaults.viewMode
     }
   } catch {
     return defaults

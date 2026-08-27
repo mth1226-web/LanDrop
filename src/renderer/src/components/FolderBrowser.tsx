@@ -1,12 +1,54 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BrowseEntry, EntryMetadata, SortMode } from '../../../shared/types'
+import type { BrowseEntry, EntryMetadata, SortMode, ViewMode } from '../../../shared/types'
 import { joinRelPath, parentRelPath, pathSegments } from '../store'
-import { formatBytes, hexToRgba } from '../utils/format'
+import { formatBytes, formatDate, hexToRgba } from '../utils/format'
 import { getPreviewKind } from '../utils/previewKind'
 import { markInternalDragStart, markInternalDragEnd, isInternalDragActive } from '../utils/internalDrag'
 import { sortEntries } from '../utils/sortEntries'
 import InputDialog from './InputDialog'
 import EntryDetailsDialog from './EntryDetailsDialog'
+
+const VIEW_MODE_LABELS: Record<ViewMode, string> = {
+  extraLargeIcons: '特大アイコン',
+  largeIcons: '大アイコン',
+  mediumIcons: '中アイコン',
+  smallIcons: '小アイコン',
+  list: '一覧',
+  details: '詳細',
+  tiles: '並べて表示',
+  content: 'コンテンツ'
+}
+
+const VIEW_MODE_ORDER: ViewMode[] = [
+  'extraLargeIcons',
+  'largeIcons',
+  'mediumIcons',
+  'smallIcons',
+  'list',
+  'details',
+  'tiles',
+  'content'
+]
+
+const GRID_ICON_SIZE: Partial<Record<ViewMode, number>> = {
+  extraLargeIcons: 180,
+  largeIcons: 96,
+  mediumIcons: 56,
+  tiles: 48
+}
+
+const GRID_MIN_COLUMN: Partial<Record<ViewMode, number>> = {
+  extraLargeIcons: 200,
+  largeIcons: 130,
+  mediumIcons: 90,
+  tiles: 220
+}
+
+function viewFamily(mode: ViewMode): 'grid' | 'flow' | 'row' {
+  if (mode === 'extraLargeIcons' || mode === 'largeIcons' || mode === 'mediumIcons' || mode === 'tiles') return 'grid'
+  if (mode === 'smallIcons' || mode === 'list') return 'flow'
+  return 'row'
+}
 
 interface Props {
   peerName: string
@@ -19,6 +61,7 @@ interface Props {
   previewBaseUrl: string | null
   accentColor?: string
   sortMode: SortMode
+  viewMode: ViewMode
   customOrder: string[]
   onNavigate: (path: string) => void
   onUploadFiles: (filePaths: string[]) => void
@@ -31,6 +74,7 @@ interface Props {
   onRemoveDownloadFolderOverride: (label: string) => void
   onPreviewEntry: (entry: BrowseEntry) => void
   onChangeSortMode: (mode: SortMode) => void
+  onChangeViewMode: (mode: ViewMode) => void
   onMoveEntry: (name: string, direction: 'up' | 'down') => void
   onReorderEntries: (draggedName: string, targetName: string, after: boolean) => void
 }
@@ -46,6 +90,7 @@ export default function FolderBrowser({
   previewBaseUrl,
   accentColor,
   sortMode,
+  viewMode,
   customOrder,
   onNavigate,
   onUploadFiles,
@@ -58,6 +103,7 @@ export default function FolderBrowser({
   onRemoveDownloadFolderOverride,
   onPreviewEntry,
   onChangeSortMode,
+  onChangeViewMode,
   onMoveEntry,
   onReorderEntries
 }: Props): JSX.Element {
@@ -165,11 +211,69 @@ export default function FolderBrowser({
     setDropTarget(null)
   }
 
+  async function handleEntryContextMenu(e: React.MouseEvent, entry: BrowseEntry): Promise<void> {
+    e.preventDefault()
+    const override = downloadFolderOverrides[entry.name]
+    const items: { id: string; label: string; disabled?: boolean }[] = []
+    if (sortMode === 'manual') {
+      items.push({ id: 'moveUp', label: '上へ移動' }, { id: 'moveDown', label: '下へ移動' }, { id: '__separator__', label: '' })
+    }
+    if (!isSelf) items.push({ id: 'download', label: 'ダウンロード' })
+    if (!entry.isDirectory && isSelf) items.push({ id: 'reveal', label: 'フォルダで表示' })
+    if (isAtRoot) {
+      items.push(
+        override ? { id: 'removeOverride', label: '保存先を解除' } : { id: 'setOverride', label: '保存先を設定' }
+      )
+    }
+    items.push({ id: 'details', label: '詳細' })
+    if (!isAtRoot) items.push({ id: 'rename', label: '名前変更' })
+
+    const actionId = await window.electronAPI.showEntryContextMenu(items)
+    switch (actionId) {
+      case 'moveUp':
+        onMoveEntry(entry.name, 'up')
+        break
+      case 'moveDown':
+        onMoveEntry(entry.name, 'down')
+        break
+      case 'download':
+        onDownload([entry])
+        break
+      case 'reveal':
+        onRevealLocal(entry)
+        break
+      case 'setOverride':
+        onSetDownloadFolderOverride(entry.name)
+        break
+      case 'removeOverride':
+        onRemoveDownloadFolderOverride(entry.name)
+        break
+      case 'details':
+        setDetailsEntry(entry)
+        break
+      case 'rename':
+        setRenamingEntry(entry)
+        break
+    }
+  }
+
   const hiddenCount = entries.filter((e) => metadata[e.name]?.hidden).length
   const memoCount = entries.filter((e) => metadata[e.name]?.memo).length
   const sortedEntries = sortEntries(entries, sortMode, customOrder)
   const visibleEntries = sortedEntries.filter((e) => showHidden || !metadata[e.name]?.hidden)
   const selectedEntries = visibleEntries.filter((e) => selectedNames.has(e.name))
+
+  const family = viewFamily(viewMode)
+  const enrichedEntries = visibleEntries.map((entry) => {
+    const meta = metadata[entry.name]
+    const kind = entry.isDirectory ? null : getPreviewKind(entry.name)
+    const thumbUrl =
+      showThumbnails && !entry.isDirectory && previewBaseUrl && kind === 'image'
+        ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, entry.name))}`
+        : null
+    const icon = entry.isDirectory ? '📁' : kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : '📄'
+    return { entry, meta, kind, thumbUrl, icon, override: downloadFolderOverrides[entry.name] }
+  })
 
   const selfStyle: React.CSSProperties =
     isSelf && accentColor
@@ -212,6 +316,16 @@ export default function FolderBrowser({
           </nav>
         </div>
         <div className="folder-browser-actions">
+          <label className="view-mode-select">
+            <span>表示:</span>
+            <select value={viewMode} onChange={(e) => onChangeViewMode(e.target.value as ViewMode)}>
+              {VIEW_MODE_ORDER.map((mode) => (
+                <option key={mode} value={mode}>
+                  {VIEW_MODE_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="sort-mode-switch">
             <button
               className={sortMode === 'name' ? 'button secondary small active' : 'button secondary small'}
@@ -278,80 +392,179 @@ export default function FolderBrowser({
             ? '共有フォルダがありません（設定画面から追加できます）'
             : 'このフォルダは空です。ファイルをドラッグ&ドロップしてアップロードできます'}
         </p>
+      ) : family === 'grid' ? (
+        <ul className="entry-grid" style={{ ['--grid-min' as string]: `${GRID_MIN_COLUMN[viewMode]}px` }}>
+          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon }) => (
+            <li
+              key={entry.name}
+              className={[
+                'entry-card',
+                viewMode === 'tiles' ? 'entry-card-tile' : 'entry-card-stack',
+                meta?.hidden ? 'entry-hidden' : '',
+                dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
+              draggable={sortMode === 'manual' || isSelf}
+              onDragStart={(e) => handleEntryDragStart(e, entry)}
+              onDragOver={(e) => handleReorderDragOver(e, entry)}
+              onDrop={(e) => handleReorderDrop(e, entry)}
+              onDragEnd={handleEntryDragEnd}
+              onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
+            >
+              {!isSelf && (
+                <input
+                  type="checkbox"
+                  className="entry-card-checkbox"
+                  checked={selectedNames.has(entry.name)}
+                  onChange={() => toggleSelected(entry.name)}
+                />
+              )}
+              <button
+                className="entry-card-main"
+                title="ダブルクリックで開く"
+                onDoubleClick={() => {
+                  if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                  else if (kind) onPreviewEntry(entry)
+                }}
+                disabled={!entry.isDirectory && !kind}
+              >
+                <div className="entry-card-icon" style={{ ['--icon-size' as string]: `${GRID_ICON_SIZE[viewMode]}px` }}>
+                  {thumbUrl ? (
+                    <img src={thumbUrl} alt="" loading="lazy" />
+                  ) : (
+                    <span className="entry-card-emoji">{icon}</span>
+                  )}
+                </div>
+                <div className="entry-card-text">
+                  <span className={meta?.imported ? 'entry-card-name entry-imported' : 'entry-card-name'}>
+                    {entry.name}
+                  </span>
+                  {viewMode === 'tiles' && !entry.isDirectory && (
+                    <span className="entry-card-meta">{formatBytes(entry.size)}</span>
+                  )}
+                  {meta?.memo && showMemoInline && <span className="entry-card-meta">{meta.memo}</span>}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : family === 'flow' ? (
+        <ul className="entry-flow-list">
+          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon }) => (
+            <li
+              key={entry.name}
+              className={[
+                'entry-flow-item',
+                meta?.hidden ? 'entry-hidden' : '',
+                dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18), borderLeft: `3px solid ${meta.color}` } : undefined}
+              draggable={sortMode === 'manual' || isSelf}
+              onDragStart={(e) => handleEntryDragStart(e, entry)}
+              onDragOver={(e) => handleReorderDragOver(e, entry)}
+              onDrop={(e) => handleReorderDrop(e, entry)}
+              onDragEnd={handleEntryDragEnd}
+              onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
+            >
+              {!isSelf && (
+                <input
+                  type="checkbox"
+                  className="entry-checkbox"
+                  checked={selectedNames.has(entry.name)}
+                  onChange={() => toggleSelected(entry.name)}
+                />
+              )}
+              <button
+                className="entry-flow-main"
+                title="ダブルクリックで開く"
+                onDoubleClick={() => {
+                  if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                  else if (kind) onPreviewEntry(entry)
+                }}
+                disabled={!entry.isDirectory && !kind}
+              >
+                <span className="entry-flow-icon">
+                  {thumbUrl ? <img src={thumbUrl} alt="" loading="lazy" /> : icon}
+                </span>
+                <span className={meta?.imported ? 'entry-flow-name entry-imported' : 'entry-flow-name'}>
+                  {entry.name}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       ) : (
         <ul className="entry-list">
-          {visibleEntries.map((entry) => {
-            const meta = metadata[entry.name]
-            const override = downloadFolderOverrides[entry.name]
-            const thumbUrl =
-              showThumbnails && !entry.isDirectory && previewBaseUrl && getPreviewKind(entry.name) === 'image'
-                ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, entry.name))}`
-                : null
-            return (
-              <li
-                key={entry.name}
-                className={[
-                  'entry-item',
-                  meta?.hidden ? 'entry-hidden' : '',
-                  dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                style={
-                  meta?.color
-                    ? { backgroundColor: hexToRgba(meta.color, 0.18), borderLeft: `3px solid ${meta.color}` }
-                    : undefined
-                }
-                draggable={sortMode === 'manual' || isSelf}
-                onDragStart={(e) => handleEntryDragStart(e, entry)}
-                onDragOver={(e) => handleReorderDragOver(e, entry)}
-                onDrop={(e) => handleReorderDrop(e, entry)}
-                onDragEnd={handleEntryDragEnd}
-              >
-                <div className="entry-row">
-                  {thumbUrl && (
-                    <div className="entry-thumb">
-                      <img className="entry-thumb-media" src={thumbUrl} alt="" loading="lazy" />
-                    </div>
-                  )}
-                  {!isSelf && (
-                    <input
-                      type="checkbox"
-                      className="entry-checkbox"
-                      checked={selectedNames.has(entry.name)}
-                      onChange={() => toggleSelected(entry.name)}
-                    />
-                  )}
-                  <button
-                    className="entry-main"
-                    title="ダブルクリックで開く"
-                    onDoubleClick={() => {
-                      if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
-                      else if (getPreviewKind(entry.name)) onPreviewEntry(entry)
-                    }}
-                    disabled={!entry.isDirectory && !getPreviewKind(entry.name)}
-                  >
-                    <span className="entry-icon">
-                      {entry.isDirectory ? '📁' : getPreviewKind(entry.name) === 'image' ? '🖼️' : getPreviewKind(entry.name) === 'video' ? '🎬' : '📄'}
+          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, override }) => (
+            <li
+              key={entry.name}
+              className={[
+                'entry-item',
+                meta?.hidden ? 'entry-hidden' : '',
+                dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={
+                meta?.color
+                  ? { backgroundColor: hexToRgba(meta.color, 0.18), borderLeft: `3px solid ${meta.color}` }
+                  : undefined
+              }
+              draggable={sortMode === 'manual' || isSelf}
+              onDragStart={(e) => handleEntryDragStart(e, entry)}
+              onDragOver={(e) => handleReorderDragOver(e, entry)}
+              onDrop={(e) => handleReorderDrop(e, entry)}
+              onDragEnd={handleEntryDragEnd}
+              onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
+            >
+              <div className="entry-row">
+                {viewMode === 'details' && thumbUrl && (
+                  <div className="entry-thumb">
+                    <img className="entry-thumb-media" src={thumbUrl} alt="" loading="lazy" />
+                  </div>
+                )}
+                {!isSelf && (
+                  <input
+                    type="checkbox"
+                    className="entry-checkbox"
+                    checked={selectedNames.has(entry.name)}
+                    onChange={() => toggleSelected(entry.name)}
+                  />
+                )}
+                <button
+                  className="entry-main"
+                  title="ダブルクリックで開く"
+                  onDoubleClick={() => {
+                    if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                    else if (kind) onPreviewEntry(entry)
+                  }}
+                  disabled={!entry.isDirectory && !kind}
+                >
+                  <span className="entry-icon">{icon}</span>
+                  <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
+                  {showMemoInline && meta?.memo && (
+                    <span className="entry-memo-inline" title={meta.memo}>
+                      {meta.memo}
                     </span>
-                    <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
-                    {showMemoInline && meta?.memo && (
-                      <span className="entry-memo-inline" title={meta.memo}>
-                        {meta.memo}
-                      </span>
-                    )}
-                    {meta?.imported && (
-                      <span className="entry-badge" title="取り込み済み">
-                        ✓
-                      </span>
-                    )}
-                    {meta?.memo && !showMemoInline && (
-                      <span className="entry-badge" title={meta.memo}>
-                        📝
-                      </span>
-                    )}
-                    {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
-                  </button>
+                  )}
+                  {meta?.imported && (
+                    <span className="entry-badge" title="取り込み済み">
+                      ✓
+                    </span>
+                  )}
+                  {meta?.memo && !showMemoInline && (
+                    <span className="entry-badge" title={meta.memo}>
+                      📝
+                    </span>
+                  )}
+                  {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
+                  {viewMode === 'content' && <span className="entry-date">{formatDate(entry.modifiedAt)}</span>}
+                </button>
+                {viewMode === 'details' && (
                   <div className="entry-actions">
                     {sortMode === 'manual' && (
                       <span className="entry-reorder">
@@ -404,10 +617,10 @@ export default function FolderBrowser({
                       </button>
                     )}
                   </div>
-                </div>
-              </li>
-            )
-          })}
+                )}
+              </div>
+            </li>
+          ))}
         </ul>
       )}
 

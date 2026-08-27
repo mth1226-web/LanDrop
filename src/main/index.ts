@@ -44,7 +44,7 @@ import {
 import type { ChatStore } from './chatStore'
 import { sortOrderKey, loadSortOrderStore, saveSortOrderStore, getCustomOrder, setCustomOrder } from './sortOrderStore'
 import type { SortOrderStore } from './sortOrderStore'
-import type { AppSettings, BrowseEntry, ChatMessage, UpdateState } from '../shared/types'
+import type { AppSettings, BrowseEntry, ChatMessage, UpdateState, ViewMode } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
@@ -389,6 +389,39 @@ function registerIpcHandlers(): void {
   ipcMain.handle('set-sort-mode', (_event, mode: 'name' | 'date' | 'manual') => {
     return updateSettings({ ...settings, sortMode: mode })
   })
+
+  ipcMain.handle('set-view-mode', (_event, mode: ViewMode) => {
+    return updateSettings({ ...settings, viewMode: mode })
+  })
+
+  ipcMain.handle(
+    'show-entry-context-menu',
+    (event, items: { id: string; label: string; disabled?: boolean }[]) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      return new Promise<string | null>((resolve) => {
+        let resolved = false
+        const template = items.map((item) =>
+          item.id === '__separator__'
+            ? { type: 'separator' as const }
+            : {
+                label: item.label,
+                enabled: !item.disabled,
+                click: () => {
+                  resolved = true
+                  resolve(item.id)
+                }
+              }
+        )
+        const menu = Menu.buildFromTemplate(template)
+        menu.popup({
+          window: win ?? undefined,
+          callback: () => {
+            if (!resolved) resolve(null)
+          }
+        })
+      })
+    }
+  )
 
   ipcMain.handle('get-custom-order', (_event, args: { peerDeviceId: string; relPath: string }) =>
     getCustomOrder(sortOrderStore, sortOrderKey(args.peerDeviceId, args.relPath))
@@ -823,7 +856,8 @@ function loadOrInitSettings(): AppSettings {
     accentColor: '#4caf6a',
     preferredNetworkInterface: null,
     downloadFolderOverrides: {},
-    sortMode: 'name'
+    sortMode: 'name',
+    viewMode: 'details'
   }
   const loaded = loadSettings(filePath, defaults)
   if (isFirstRun) saveSettings(filePath, loaded)

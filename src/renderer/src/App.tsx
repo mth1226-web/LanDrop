@@ -4,7 +4,7 @@ import PeerList from './components/PeerList'
 import FolderBrowser from './components/FolderBrowser'
 import ActivityList from './components/ActivityList'
 import FirewallHintBanner from './components/FirewallHintBanner'
-import type { BrowseEntry, EntryMetadata, Peer, SortMode } from '../../shared/types'
+import type { BrowseEntry, EntryMetadata, Peer, SortMode, ViewMode } from '../../shared/types'
 import { effectiveManualOrder, moveNameInOrder, moveNameRelativeTo } from './utils/sortEntries'
 
 export default function App(): JSX.Element {
@@ -147,6 +147,11 @@ export default function App(): JSX.Element {
     setSettings(updated)
   }
 
+  async function handleChangeViewMode(mode: ViewMode): Promise<void> {
+    const updated = await window.electronAPI.setViewMode(mode)
+    setSettings(updated)
+  }
+
   async function handleMoveEntry(name: string, direction: 'up' | 'down'): Promise<void> {
     if (!selectedPeerId) return
     const order = effectiveManualOrder(entries, customOrder)
@@ -200,6 +205,7 @@ export default function App(): JSX.Element {
               previewBaseUrl={previewBaseUrl}
               accentColor={settings?.accentColor}
               sortMode={settings?.sortMode ?? 'name'}
+              viewMode={settings?.viewMode ?? 'details'}
               customOrder={customOrder}
               onNavigate={setCurrentPath}
               onUploadFiles={handleUploadFiles}
@@ -212,6 +218,7 @@ export default function App(): JSX.Element {
               onRemoveDownloadFolderOverride={handleRemoveDownloadFolderOverride}
               onPreviewEntry={handlePreviewEntry}
               onChangeSortMode={handleChangeSortMode}
+              onChangeViewMode={handleChangeViewMode}
               onMoveEntry={handleMoveEntry}
               onReorderEntries={handleReorderEntries}
             />

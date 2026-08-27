@@ -8,7 +8,8 @@ import type {
   PreviewSource,
   SortMode,
   TransferActivity,
-  UpdateState
+  UpdateState,
+  ViewMode
 } from '../../../shared/types'
 
 export interface ElectronAPI {
@@ -19,6 +20,8 @@ export interface ElectronAPI {
   setSettings: (settings: { deviceName: string }) => Promise<AppSettings>
   setAccentColor: (color: string) => Promise<AppSettings>
   setSortMode: (mode: SortMode) => Promise<AppSettings>
+  setViewMode: (mode: ViewMode) => Promise<AppSettings>
+  showEntryContextMenu: (items: { id: string; label: string; disabled?: boolean }[]) => Promise<string | null>
   getCustomOrder: (peerDeviceId: string, relPath: string) => Promise<string[]>
   setCustomOrder: (peerDeviceId: string, relPath: string, order: string[]) => Promise<string[]>
   chooseSharedFolder: () => Promise<AppSettings | null>
