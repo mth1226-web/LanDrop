@@ -146,7 +146,10 @@ export default function FolderBrowser({
   const [ancestorColumns, setAncestorColumns] = useState<ColumnData[]>([])
   const [columnsLoading, setColumnsLoading] = useState(false)
   const [columnFileSelection, setColumnFileSelection] = useState<string | null>(null)
+  const [isEditingPath, setIsEditingPath] = useState(false)
+  const [pathInputValue, setPathInputValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pathInputRef = useRef<HTMLInputElement>(null)
 
   const segments = pathSegments(currentPath)
   const isAtRoot = currentPath === ''
@@ -256,6 +259,20 @@ export default function FolderBrowser({
     setDraggedName(null)
     setDropTarget(null)
   }
+
+  async function handleEnterPathEditMode(): Promise<void> {
+    if (isAtRoot) return
+    const absolutePath = isSelf ? await window.electronAPI.resolveAbsolutePath(peerDeviceId, currentPath) : null
+    setPathInputValue(absolutePath ?? `\\\\${peerName}\\${currentPath.replace(/\//g, '\\')}`)
+    setIsEditingPath(true)
+  }
+
+  useEffect(() => {
+    if (isEditingPath) {
+      pathInputRef.current?.focus()
+      pathInputRef.current?.select()
+    }
+  }, [isEditingPath])
 
   async function handleEntryContextMenu(e: React.MouseEvent, entry: BrowseEntry): Promise<void> {
     e.preventDefault()
@@ -465,19 +482,41 @@ export default function FolderBrowser({
           >
             ← 戻る
           </button>
-          <nav className="breadcrumb">
-            <button className="breadcrumb-item" onClick={() => onNavigate('')}>
-              {peerName}
-            </button>
-            {segments.map((seg, i) => (
-              <span key={i}>
-                <span className="breadcrumb-sep">/</span>
-                <button className="breadcrumb-item" onClick={() => onNavigate(segments.slice(0, i + 1).join('/'))}>
-                  {seg}
-                </button>
-              </span>
-            ))}
-          </nav>
+          {isEditingPath ? (
+            <input
+              ref={pathInputRef}
+              className="path-address-input"
+              value={pathInputValue}
+              onChange={(e) => setPathInputValue(e.target.value)}
+              onBlur={() => setIsEditingPath(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' || e.key === 'Enter') {
+                  e.currentTarget.blur()
+                }
+              }}
+            />
+          ) : (
+            <nav className="breadcrumb">
+              <button className="breadcrumb-item" onClick={() => onNavigate('')}>
+                {peerName}
+              </button>
+              {segments.map((seg, i) => (
+                <span key={i}>
+                  <span className="breadcrumb-sep">/</span>
+                  <button className="breadcrumb-item" onClick={() => onNavigate(segments.slice(0, i + 1).join('/'))}>
+                    {seg}
+                  </button>
+                </span>
+              ))}
+              {!isAtRoot && (
+                <span
+                  className="breadcrumb-spacer"
+                  title="クリックでパスを表示・コピー"
+                  onClick={() => void handleEnterPathEditMode()}
+                />
+              )}
+            </nav>
+          )}
           <div className="search-box">
             <input
               type="search"

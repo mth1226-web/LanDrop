@@ -245,6 +245,26 @@ body {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  flex: 1;
+  min-width: 60px;
+}
+
+.breadcrumb-spacer {
+  flex: 1;
+  min-width: 24px;
+  align-self: stretch;
+  cursor: text;
+}
+
+.path-address-input {
+  flex: 1;
+  min-width: 120px;
+  background: #1c1c28;
+  color: #e8e8f0;
+  border: 1px solid #5878e8;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
 }
 
 .breadcrumb-item {

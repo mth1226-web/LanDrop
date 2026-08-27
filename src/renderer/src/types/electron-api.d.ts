@@ -58,6 +58,7 @@ export interface ElectronAPI {
   openPreviewWindow: (source: PreviewSource | null) => Promise<void>
   openBrowseWindow: (peerDeviceId: string, path: string) => Promise<void>
   getLanUrl: () => Promise<string | null>
+  resolveAbsolutePath: (peerDeviceId: string, relPath: string) => Promise<string | null>
   getOwnPreviewBaseUrl: () => Promise<string | null>
   listNetworkInterfaces: () => Promise<NetworkInterfaceOption[]>
   setPreferredNetworkInterface: (name: string | null) => Promise<AppSettings>

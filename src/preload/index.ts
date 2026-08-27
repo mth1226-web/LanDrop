@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openBrowseWindow: (peerDeviceId: string, path: string): Promise<void> =>
     ipcRenderer.invoke('open-browse-window', { peerDeviceId, path }),
   getLanUrl: (): Promise<string | null> => ipcRenderer.invoke('get-lan-url'),
+  resolveAbsolutePath: (peerDeviceId: string, relPath: string): Promise<string | null> =>
+    ipcRenderer.invoke('resolve-absolute-path', { peerDeviceId, relPath }),
   getOwnPreviewBaseUrl: (): Promise<string | null> => ipcRenderer.invoke('get-own-preview-base-url'),
   listNetworkInterfaces: (): Promise<NetworkInterfaceOption[]> => ipcRenderer.invoke('list-network-interfaces'),
   setPreferredNetworkInterface: (name: string | null): Promise<AppSettings> =>

@@ -879,6 +879,14 @@ function registerIpcHandlers(): void {
   ipcMain.handle('check-for-update', () => checkForUpdateAndNotify())
   ipcMain.handle('apply-update', () => applyUpdateAndNotify())
 
+  // アドレスバー表示用。自分の共有フォルダのみ実際の絶対パスを解決できる(相手PCの実パスは分からないためnull)
+  ipcMain.handle('resolve-absolute-path', (_event, args: { peerDeviceId: string; relPath: string }) => {
+    if (args.peerDeviceId !== settings.deviceId || !args.relPath) return null
+    const resolved = resolveSharedEntry(settings.sharedFolders, args.relPath)
+    if (!resolved) return null
+    return resolveSafePath(resolved.rootPath, resolved.innerRelPath)
+  })
+
   ipcMain.handle('get-lan-url', () => {
     const address = getLanAddress(settings.preferredNetworkInterface)
     return address && ownHttpPort ? `http://${address}:${ownHttpPort}/` : null
