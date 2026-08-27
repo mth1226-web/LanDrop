@@ -159,7 +159,9 @@ function createWindow(
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // PDFプレビュー(<iframe>)でChromium内蔵のPDFビューアを使うために必要
+      plugins: true
     }
   })
 
@@ -735,7 +737,7 @@ function registerIpcHandlers(): void {
     return address && ownHttpPort ? `http://${address}:${ownHttpPort}/` : null
   })
 
-  // 自分の共有フォルダのプレビュー(画像/動画)用。ループバックなのでネットワークインターフェースの有無に依存しない
+  // 自分の共有フォルダのプレビュー(画像/動画/音声/PDF/テキスト)用。ループバックなのでネットワークインターフェースの有無に依存しない
   ipcMain.handle('get-own-preview-base-url', () => (ownHttpPort ? `http://127.0.0.1:${ownHttpPort}` : null))
 
   ipcMain.handle('list-network-interfaces', () => getLanInterfaces())

@@ -269,7 +269,7 @@ export default function FolderBrowser({
     const kind = entry.isDirectory ? null : getPreviewKind(entry.name)
     const thumbUrl =
       showThumbnails && !entry.isDirectory && previewBaseUrl && kind === 'image'
-        ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, entry.name))}`
+        ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, entry.name))}&inline=1`
         : null
     const icon = entry.isDirectory ? '📁' : kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : '📄'
     return { entry, meta, kind, thumbUrl, icon, override: downloadFolderOverrides[entry.name] }

@@ -11,6 +11,7 @@ import extractZip from 'extract-zip'
 import { browseShared, resolveSharedEntry, resolveSafePath, createFolder, renameEntry, isValidEntryName } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { renderWebUiHtml } from './webUi'
+import { guessMimeType } from './mimeType'
 import type { BrowseEntry, ChatMessage } from '../shared/types'
 
 const JSON_BODY_LIMIT_BYTES = 1_000_000
@@ -140,10 +141,14 @@ export class HttpServer extends EventEmitter {
       return
     }
     const stat = fs.statSync(target)
+    const fileName = path.basename(target)
+    // inline=1 はプレビュー表示用。ブラウザ内蔵ビューア(画像/動画/音声/PDF)を起動させるため
+    // ダウンロード時のoctet-stream+attachmentとは別に、拡張子に応じたMIME型とinline表示を返す
+    const isInline = url.searchParams.get('inline') === '1'
     res.writeHead(200, {
-      'content-type': 'application/octet-stream',
+      'content-type': isInline ? guessMimeType(fileName) : 'application/octet-stream',
       'content-length': stat.size,
-      'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(target))}`
+      'content-disposition': `${isInline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(fileName)}`
     })
     fs.createReadStream(target).pipe(res)
   }

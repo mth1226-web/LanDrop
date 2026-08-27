@@ -35,6 +35,26 @@ function zipDirectoryContents(srcDir: string, destZipPath: string): Promise<void
   })
 }
 
+function getHeaders(
+  port: number,
+  path: string
+): Promise<{ status: number; contentType: string | undefined; contentDisposition: string | undefined }> {
+  return new Promise((resolve, reject) => {
+    http
+      .get({ host: '127.0.0.1', port, path }, (res) => {
+        res.resume()
+        res.on('end', () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            contentType: res.headers['content-type'],
+            contentDisposition: res.headers['content-disposition']
+          })
+        )
+      })
+      .on('error', reject)
+  })
+}
+
 function getText(port: number, path: string): Promise<{ status: number; contentType: string | undefined; body: string }> {
   return new Promise((resolve, reject) => {
     http
@@ -133,6 +153,27 @@ test('uploadでファイルを送り込み、downloadで取得できる', async 
 
     fs.rmSync(srcPath, { force: true })
     fs.rmSync(destPath, { force: true })
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('downloadはinline=1指定でContent-Type/Content-Dispositionがプレビュー向けに変わる', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.writeFileSync(path.join(folderA, 'photo.png'), 'fake-png-bytes')
+
+    const normal = await getHeaders(port, `/api/download?path=${encodeURIComponent(`${label}/photo.png`)}`)
+    assert.equal(normal.contentType, 'application/octet-stream')
+    assert.match(normal.contentDisposition ?? '', /^attachment/)
+
+    const inline = await getHeaders(port, `/api/download?path=${encodeURIComponent(`${label}/photo.png`)}&inline=1`)
+    assert.equal(inline.contentType, 'image/png')
+    assert.match(inline.contentDisposition ?? '', /^inline/)
   } finally {
     await server.stop()
     fs.rmSync(folderA, { recursive: true, force: true })

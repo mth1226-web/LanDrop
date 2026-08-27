@@ -121,7 +121,7 @@ export default function App(): JSX.Element {
     if (!previewBaseUrl) return
     const relPath = joinRelPath(currentPath, entry.name)
     void window.electronAPI.openPreviewWindow({
-      url: `${previewBaseUrl}/api/download?path=${encodeURIComponent(relPath)}`,
+      url: `${previewBaseUrl}/api/download?path=${encodeURIComponent(relPath)}&inline=1`,
       name: entry.name
     })
   }
