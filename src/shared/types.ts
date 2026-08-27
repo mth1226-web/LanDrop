@@ -67,7 +67,7 @@ export interface TransferActivity {
 
 export type SortMode = 'name' | 'date' | 'manual'
 
-/** Windowsエクスプローラの表示モードに対応する8種類 */
+/** Windowsエクスプローラ相当の8種類 + Mac Finderのカラム表示 */
 export type ViewMode =
   | 'extraLargeIcons'
   | 'largeIcons'
@@ -77,6 +77,7 @@ export type ViewMode =
   | 'details'
   | 'tiles'
   | 'content'
+  | 'columns'
 
 export interface AppSettings {
   deviceId: string

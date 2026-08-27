@@ -16,7 +16,8 @@ const VIEW_MODE_LABELS: Record<ViewMode, string> = {
   list: '一覧',
   details: '詳細',
   tiles: '並べて表示',
-  content: 'コンテンツ'
+  content: 'コンテンツ',
+  columns: 'カラム表示'
 }
 
 const VIEW_MODE_ORDER: ViewMode[] = [
@@ -27,7 +28,8 @@ const VIEW_MODE_ORDER: ViewMode[] = [
   'list',
   'details',
   'tiles',
-  'content'
+  'content',
+  'columns'
 ]
 
 const GRID_ICON_SIZE: Partial<Record<ViewMode, number>> = {
@@ -44,14 +46,22 @@ const GRID_MIN_COLUMN: Partial<Record<ViewMode, number>> = {
   tiles: 220
 }
 
-function viewFamily(mode: ViewMode): 'grid' | 'flow' | 'row' {
+interface ColumnData {
+  path: string
+  entries: BrowseEntry[]
+  metadata: Record<string, EntryMetadata>
+}
+
+function viewFamily(mode: ViewMode): 'grid' | 'flow' | 'row' | 'columns' {
   if (mode === 'extraLargeIcons' || mode === 'largeIcons' || mode === 'mediumIcons' || mode === 'tiles') return 'grid'
   if (mode === 'smallIcons' || mode === 'list') return 'flow'
+  if (mode === 'columns') return 'columns'
   return 'row'
 }
 
 interface Props {
   peerName: string
+  peerDeviceId: string
   currentPath: string
   entries: BrowseEntry[]
   metadata: Record<string, EntryMetadata>
@@ -81,6 +91,7 @@ interface Props {
 
 export default function FolderBrowser({
   peerName,
+  peerDeviceId,
   currentPath,
   entries,
   metadata,
@@ -117,10 +128,44 @@ export default function FolderBrowser({
   const [showThumbnails, setShowThumbnails] = useState(true)
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
+  const [ancestorColumns, setAncestorColumns] = useState<ColumnData[]>([])
+  const [columnsLoading, setColumnsLoading] = useState(false)
+  const [columnFileSelection, setColumnFileSelection] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const segments = pathSegments(currentPath)
   const isAtRoot = currentPath === ''
+
+  // カラム表示: 現在のフォルダ(currentPath)の中身はprops(entries/metadata)にそのまま使えるが、
+  // 祖先の各階層は自前で取得してカラムとして並べる必要がある(親コンポーネントは現在地の分しか持っていないため)
+  useEffect(() => {
+    if (viewMode !== 'columns') return
+    setColumnFileSelection(null)
+    const segs = pathSegments(currentPath)
+    const prefixes = segs.map((_, i) => segs.slice(0, i).join('/'))
+    if (prefixes.length === 0) {
+      setAncestorColumns([])
+      return
+    }
+    let cancelled = false
+    setColumnsLoading(true)
+    Promise.all(
+      prefixes.map(async (p) => {
+        const list = await window.electronAPI.browseFolder(peerDeviceId, p)
+        const meta = await window.electronAPI.getEntryMetadataForChildren(peerDeviceId, p, list.map((e) => e.name))
+        return { path: p, entries: list, metadata: meta }
+      })
+    )
+      .then((results) => {
+        if (!cancelled) setAncestorColumns(results)
+      })
+      .finally(() => {
+        if (!cancelled) setColumnsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [viewMode, currentPath, peerDeviceId])
 
   useEffect(() => {
     setSelectedNames(new Set())
@@ -497,6 +542,100 @@ export default function FolderBrowser({
             </li>
           ))}
         </ul>
+      ) : family === 'columns' ? (
+        <div className="column-browser">
+          {ancestorColumns.map((col, i) => {
+            const selectedName = segments[i]
+            return (
+              <div className="column-browser-col" key={col.path || '(root)'}>
+                <ul className="column-browser-list">
+                  {sortEntries(col.entries, sortMode, []).map((entry) => {
+                    const meta = col.metadata[entry.name]
+                    const entryKind = entry.isDirectory ? null : getPreviewKind(entry.name)
+                    const entryIcon = entry.isDirectory ? '📁' : entryKind === 'image' ? '🖼️' : entryKind === 'video' ? '🎬' : '📄'
+                    return (
+                      <li key={entry.name}>
+                        <button
+                          className={
+                            entry.name === selectedName ? 'column-browser-item selected' : 'column-browser-item'
+                          }
+                          style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
+                          onClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
+                          disabled={!entry.isDirectory}
+                        >
+                          <span className="column-browser-icon">{entryIcon}</span>
+                          <span className="column-browser-name">{entry.name}</span>
+                          {entry.isDirectory && <span className="column-browser-chevron">›</span>}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )
+          })}
+          <div className="column-browser-col">
+            <ul className="column-browser-list">
+              {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon }) => (
+                <li key={entry.name}>
+                  <button
+                    className={
+                      columnFileSelection === entry.name ? 'column-browser-item selected' : 'column-browser-item'
+                    }
+                    style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
+                    onClick={() => {
+                      if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                      else setColumnFileSelection(entry.name)
+                    }}
+                    onDoubleClick={() => {
+                      if (!entry.isDirectory && kind) onPreviewEntry(entry)
+                    }}
+                    onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
+                  >
+                    <span className="column-browser-icon">
+                      {thumbUrl ? <img src={thumbUrl} alt="" loading="lazy" /> : icon}
+                    </span>
+                    <span className="column-browser-name">{entry.name}</span>
+                    {entry.isDirectory && <span className="column-browser-chevron">›</span>}
+                  </button>
+                </li>
+              ))}
+              {columnsLoading && <li className="column-browser-loading">読み込み中…</li>}
+            </ul>
+          </div>
+          {columnFileSelection &&
+            (() => {
+              const selected = entries.find((e) => e.name === columnFileSelection)
+              if (!selected) return null
+              const selectedMeta = metadata[columnFileSelection]
+              const selectedKind = getPreviewKind(columnFileSelection)
+              const thumbSrc =
+                previewBaseUrl && selectedKind === 'image'
+                  ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, columnFileSelection))}&inline=1`
+                  : null
+              return (
+                <div className="column-browser-preview">
+                  {thumbSrc ? (
+                    <img className="column-browser-preview-media" src={thumbSrc} alt="" />
+                  ) : (
+                    <span className="column-browser-preview-icon">📄</span>
+                  )}
+                  <div className="column-browser-preview-name">{columnFileSelection}</div>
+                  <div className="column-browser-preview-meta">
+                    {formatBytes(selected.size)} ・ {formatDate(selected.modifiedAt)}
+                  </div>
+                  {selectedMeta?.memo && <div className="column-browser-preview-memo">{selectedMeta.memo}</div>}
+                  <button
+                    className="button primary small"
+                    onClick={() => onPreviewEntry(selected)}
+                    disabled={!selectedKind}
+                  >
+                    プレビューを開く
+                  </button>
+                </div>
+              )
+            })()}
+        </div>
       ) : (
         <ul className="entry-list">
           {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, override }) => (

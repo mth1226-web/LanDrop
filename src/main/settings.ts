@@ -13,7 +13,8 @@ const VIEW_MODES: ViewMode[] = [
   'list',
   'details',
   'tiles',
-  'content'
+  'content',
+  'columns'
 ]
 
 export function loadSettings(settingsFilePath: string, defaults: AppSettings): AppSettings {

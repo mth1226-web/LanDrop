@@ -196,6 +196,7 @@ export default function App(): JSX.Element {
           {selectedPeer ? (
             <FolderBrowser
               peerName={isSelf ? `${selectedPeer.deviceName}（自分）` : selectedPeer.deviceName}
+              peerDeviceId={selectedPeer.deviceId}
               currentPath={currentPath}
               entries={entries}
               metadata={entryMetadata}
