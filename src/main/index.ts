@@ -1,8 +1,17 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, Menu, MenuItemConstructorOptions } from 'electron'
-import { join, basename, posix } from 'path'
-import { existsSync, statSync, cpSync, rmSync, createWriteStream } from 'fs'
+import {
+  join,
+  basename,
+  posix,
+  resolve as resolvePath,
+  relative as relativePath,
+  sep as pathSep,
+  dirname as dirnamePath
+} from 'path'
+import { existsSync, statSync, cpSync, rmSync, createWriteStream, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { hostname, tmpdir } from 'os'
+import { execFile } from 'child_process'
 import archiver from 'archiver'
 import { Discovery } from './discovery'
 import { HttpServer } from './httpServer'
@@ -32,7 +41,8 @@ import {
   copyEntry,
   moveEntry,
   compressEntries,
-  extractZipEntry
+  extractZipEntry,
+  computeFolderLabels
 } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
@@ -60,6 +70,12 @@ import type { ChatStore } from './chatStore'
 import { sortOrderKey, loadSortOrderStore, saveSortOrderStore, getCustomOrder, setCustomOrder } from './sortOrderStore'
 import type { SortOrderStore } from './sortOrderStore'
 import type { AppSettings, BrowseEntry, ChatMessage, UpdateState, ViewMode } from '../shared/types'
+
+// デスクトップショートカット等からフォルダパスを渡して起動された場合、二重起動せず既存インスタンスに委譲する
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+}
 
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
@@ -1003,6 +1019,141 @@ function registerIpcHandlers(): void {
   ipcMain.handle('open-browse-window', (_event, args: { peerDeviceId: string; path: string }) =>
     openBrowseWindow(args.peerDeviceId, args.path)
   )
+
+  ipcMain.handle('get-shared-folder-labels', () => computeFolderLabels(settings.sharedFolders))
+  ipcMain.handle('has-desktop-shortcut', (_event, label: string) => hasDesktopShortcut(label))
+  ipcMain.handle('create-desktop-shortcut', async (_event, args: { label: string; folderPath: string }) => {
+    try {
+      await createDesktopShortcut(args.label, args.folderPath)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+  ipcMain.handle('remove-desktop-shortcut', (_event, label: string) => {
+    removeDesktopShortcut(label)
+    return { ok: true }
+  })
+}
+
+/** デスクトップに置く、指定フォルダをLanDropで直接開くショートカット(.lnk)のパス */
+function desktopShortcutPath(label: string): string {
+  return join(app.getPath('desktop'), `${label}.lnk`)
+}
+
+function hasDesktopShortcut(label: string): boolean {
+  return existsSync(desktopShortcutPath(label))
+}
+
+/** PowerShellの単一引用符文字列リテラルとして安全な形にエスケープする(単一引用符は''に二重化) */
+function toPowerShellSingleQuoted(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+/**
+ * PowerShellスクリプトを一時的な.ps1ファイル(UTF-8 BOM付き)経由で実行する。
+ * -EncodedCommandやコマンドライン引数・環境変数でパスを直接渡す方式は、Electronのメイン
+ * プロセス(コンソールを持たないGUIサブシステム)からchild_processで起動した場合に限って
+ * 日本語やバックスラッシュが化ける現象が確認できたため、ファイル経由の確実な方式にした
+ */
+function runPowerShellScript(script: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = join(tmpdir(), `landrop-ps-${randomUUID()}.ps1`)
+    const utf8Bom = Buffer.from([0xef, 0xbb, 0xbf])
+    writeFileSync(scriptPath, Buffer.concat([utf8Bom, Buffer.from(script, 'utf-8')]))
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      (err) => {
+        rmSync(scriptPath, { force: true })
+        if (err) reject(err)
+        else resolve()
+      }
+    )
+  })
+}
+
+/** Windows専用: WScript.Shell経由でデスクトップに「LanDrop.exe "フォルダパス"」を実行するショートカットを作る */
+function createDesktopShortcut(label: string, folderPath: string): Promise<void> {
+  if (process.platform !== 'win32') return Promise.reject(new Error('この機能はWindowsのみ対応しています'))
+  const exePath = app.getPath('exe')
+  const script = [
+    `$s = (New-Object -COM WScript.Shell).CreateShortcut(${toPowerShellSingleQuoted(desktopShortcutPath(label))})`,
+    `$s.TargetPath = ${toPowerShellSingleQuoted(exePath)}`,
+    `$s.Arguments = '"' + ${toPowerShellSingleQuoted(folderPath)} + '"'`,
+    `$s.WorkingDirectory = ${toPowerShellSingleQuoted(dirnamePath(exePath))}`,
+    '$s.Save()'
+  ].join('; ')
+  return runPowerShellScript(script)
+}
+
+function removeDesktopShortcut(label: string): void {
+  const lnkPath = desktopShortcutPath(label)
+  if (existsSync(lnkPath)) rmSync(lnkPath, { force: true })
+}
+
+/**
+ * argvの中から、実在するフォルダを指しているものを探す(ショートカット/2重起動からの引数用)。
+ * 開発時(未パッケージ)はelectron本体へ「electron <appDir> [追加フラグ...]」の形で渡すため、
+ * アプリ本体のディレクトリ自身(app.getAppPath())をユーザー指定のフォルダと誤認しないよう
+ * 位置ではなく値で除外する(電子側やテストハーネスが独自のフラグをargvへ追加してくる場合が
+ * あり、固定の位置スキップでは壊れるため)
+ */
+function extractFolderPathArg(argv: string[]): string | null {
+  const appPath = app.isPackaged ? null : resolvePath(app.getAppPath())
+  for (let i = argv.length - 1; i >= 1; i--) {
+    const candidate = argv[i]
+    if (!candidate || candidate.startsWith('-')) continue
+    let resolvedCandidate: string
+    try {
+      resolvedCandidate = resolvePath(candidate)
+    } catch {
+      continue
+    }
+    if (appPath && resolvedCandidate === appPath) continue
+    try {
+      if (statSync(candidate).isDirectory()) return candidate
+    } catch {
+      // 存在しない/フォルダでない引数は無視して次を見る
+    }
+  }
+  return null
+}
+
+/** 指定した絶対パスを共有フォルダ基準の相対パスに解決する。どの共有フォルダにも属さない場合は新しい共有フォルダとして追加する */
+function resolveOrAddSharedFolder(absPath: string): string {
+  const target = resolvePath(absPath).toLowerCase()
+  for (const folder of settings.sharedFolders) {
+    const root = resolvePath(folder)
+    const rootLower = root.toLowerCase()
+    if (target === rootLower || target.startsWith(rootLower + pathSep.toLowerCase())) {
+      const label = computeFolderLabels(settings.sharedFolders).find((f) => f.path === folder)?.label ?? ''
+      const innerRel = relativePath(root, resolvePath(absPath)).split(pathSep).join('/')
+      return innerRel ? `${label}/${innerRel}` : label
+    }
+  }
+  addSharedFolders([absPath])
+  const added = computeFolderLabels(settings.sharedFolders).find((f) => resolvePath(f.path).toLowerCase() === target)
+  return added?.label ?? ''
+}
+
+/** メインウインドウで指定フォルダを開く(無ければ作る)。デスクトップショートカット/2重起動どちらからも呼ばれる */
+function openFolderPathInMainWindow(absPath: string): void {
+  const relPath = resolveOrAddSharedFolder(absPath)
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow('')
+  }
+  const win = mainWindow
+  const send = (): void => {
+    win.webContents.send('open-folder-path', relPath)
+    win.show()
+    win.focus()
+  }
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
 }
 
 function loadOrInitSettings(): AppSettings {
@@ -1031,6 +1182,16 @@ function loadOrInitSettings(): AppSettings {
   return loaded
 }
 
+app.on('second-instance', (_event, argv) => {
+  const folderPath = extractFolderPathArg(argv)
+  if (folderPath) {
+    openFolderPathInMainWindow(folderPath)
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show()
+    mainWindow.focus()
+  }
+})
+
 app.whenReady().then(async () => {
   buildApplicationMenu()
   settings = loadOrInitSettings()
@@ -1040,6 +1201,9 @@ app.whenReady().then(async () => {
   mainWindow = createWindow('')
   registerIpcHandlers()
   await startNetworking()
+
+  const initialFolderPath = extractFolderPathArg(process.argv)
+  if (initialFolderPath) openFolderPathInMainWindow(initialFolderPath)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow('')

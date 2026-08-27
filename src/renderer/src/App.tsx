@@ -21,6 +21,7 @@ export default function App(): JSX.Element {
   const setUpdateState = useAppStore((s) => s.setUpdateState)
 
   const [ownPreviewBaseUrl, setOwnPreviewBaseUrl] = useState<string | null>(null)
+  const [pendingOpenPath, setPendingOpenPath] = useState<string | null>(null)
 
   const isSelf = selectedPeerId === settings?.deviceId
   const displayPeers: Peer[] = settings
@@ -62,6 +63,23 @@ export default function App(): JSX.Element {
     if (settings && !selectedPeerId) selectPeer(settings.deviceId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings])
+
+  useEffect(() => {
+    return window.electronAPI.onOpenFolderPath(setPendingOpenPath)
+  }, [])
+
+  // デスクトップショートカット等からのパス指定を、まず自分のPCへ切り替えてから反映する
+  // (ピア切り替えとフォルダ移動を同時に行うと競合するため、切り替わったのを確認してから移動する)
+  useEffect(() => {
+    if (pendingOpenPath === null || !settings) return
+    if (selectedPeerId !== settings.deviceId) {
+      selectPeer(settings.deviceId)
+      return
+    }
+    session.setCurrentPath(pendingOpenPath)
+    setPendingOpenPath(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpenPath, selectedPeerId, settings])
 
   useEffect(() => {
     // 別ウインドウの設定画面で共有フォルダが追加/削除された場合もここで再読み込みする

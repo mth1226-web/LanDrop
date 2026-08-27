@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AppSettings } from '../../../shared/types'
 import { isInternalDragActive } from '../utils/internalDrag'
 import PhoneAccessCard from './PhoneAccessCard'
@@ -30,6 +30,36 @@ export default function SettingsDialog({
 }: Props): JSX.Element {
   const [deviceName, setDeviceName] = useState(settings.deviceName)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [folderLabels, setFolderLabels] = useState<{ label: string; path: string }[]>([])
+  const [shortcutStatus, setShortcutStatus] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    window.electronAPI.getSharedFolderLabels().then(async (labels) => {
+      if (cancelled) return
+      setFolderLabels(labels)
+      const statuses = await Promise.all(labels.map((l) => window.electronAPI.hasDesktopShortcut(l.label)))
+      if (cancelled) return
+      setShortcutStatus(Object.fromEntries(labels.map((l, i) => [l.label, statuses[i]])))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [settings.sharedFolders])
+
+  async function handleToggleShortcut(label: string, folderPath: string): Promise<void> {
+    if (shortcutStatus[label]) {
+      await window.electronAPI.removeDesktopShortcut(label)
+    } else {
+      const result = await window.electronAPI.createDesktopShortcut(label, folderPath)
+      if (!result.ok) {
+        window.alert(`ショートカットを作成できませんでした: ${result.error ?? ''}`)
+        return
+      }
+    }
+    const has = await window.electronAPI.hasDesktopShortcut(label)
+    setShortcutStatus((prev) => ({ ...prev, [label]: has }))
+  }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>): void {
     e.preventDefault()
@@ -52,19 +82,32 @@ export default function SettingsDialog({
           <span>共有フォルダ（他のPCから見える・書き込める場所。複数設定できます）</span>
           <ul className="shared-folder-list">
             {settings.sharedFolders.length === 0 && <li className="empty-hint">共有フォルダが設定されていません</li>}
-            {settings.sharedFolders.map((folderPath) => (
-              <li key={folderPath} className="shared-folder-item">
-                <span className="shared-folder-path" title={folderPath}>
-                  {folderPath}
-                </span>
-                <button className="button secondary small" onClick={() => onOpenFolder(folderPath)}>
-                  開く
-                </button>
-                <button className="button secondary small" onClick={() => onRemoveSharedFolder(folderPath)}>
-                  削除
-                </button>
-              </li>
-            ))}
+            {settings.sharedFolders.map((folderPath) => {
+              const label = folderLabels.find((l) => l.path === folderPath)?.label
+              const hasShortcut = label ? (shortcutStatus[label] ?? false) : false
+              return (
+                <li key={folderPath} className="shared-folder-item">
+                  <span className="shared-folder-path" title={folderPath}>
+                    {folderPath}
+                  </span>
+                  <button className="button secondary small" onClick={() => onOpenFolder(folderPath)}>
+                    開く
+                  </button>
+                  {label && (
+                    <button
+                      className={hasShortcut ? 'button secondary small active' : 'button secondary small'}
+                      title="デスクトップに、このフォルダを直接開くショートカットを置く/外す(Windowsのみ)"
+                      onClick={() => void handleToggleShortcut(label, folderPath)}
+                    >
+                      {hasShortcut ? 'デスクトップに配置済み' : 'デスクトップにショートカット'}
+                    </button>
+                  )}
+                  <button className="button secondary small" onClick={() => onRemoveSharedFolder(folderPath)}>
+                    削除
+                  </button>
+                </li>
+              )
+            })}
           </ul>
           <div
             className={isDragOver ? 'shared-folder-dropzone drag-over' : 'shared-folder-dropzone'}

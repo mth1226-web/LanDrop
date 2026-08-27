@@ -73,6 +73,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPreviewWindow: (source: PreviewSource | null): Promise<void> => ipcRenderer.invoke('open-preview-window', source),
   openBrowseWindow: (peerDeviceId: string, path: string): Promise<void> =>
     ipcRenderer.invoke('open-browse-window', { peerDeviceId, path }),
+  getSharedFolderLabels: (): Promise<{ label: string; path: string }[]> =>
+    ipcRenderer.invoke('get-shared-folder-labels'),
+  hasDesktopShortcut: (label: string): Promise<boolean> => ipcRenderer.invoke('has-desktop-shortcut', label),
+  createDesktopShortcut: (label: string, folderPath: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('create-desktop-shortcut', { label, folderPath }),
+  removeDesktopShortcut: (label: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('remove-desktop-shortcut', label),
   getLanUrl: (): Promise<string | null> => ipcRenderer.invoke('get-lan-url'),
   resolveAbsolutePath: (peerDeviceId: string, relPath: string): Promise<string | null> =>
     ipcRenderer.invoke('resolve-absolute-path', { peerDeviceId, relPath }),
@@ -137,5 +144,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_: unknown, source: PreviewSource): void => callback(source)
     ipcRenderer.on('preview-source', handler)
     return () => ipcRenderer.removeListener('preview-source', handler)
+  },
+  onOpenFolderPath: (callback: (relPath: string) => void) => {
+    const handler = (_: unknown, relPath: string): void => callback(relPath)
+    ipcRenderer.on('open-folder-path', handler)
+    return () => ipcRenderer.removeListener('open-folder-path', handler)
   }
 })

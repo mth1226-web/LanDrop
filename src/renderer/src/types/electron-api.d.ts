@@ -57,6 +57,10 @@ export interface ElectronAPI {
   openUpdateWindow: () => Promise<void>
   openPreviewWindow: (source: PreviewSource | null) => Promise<void>
   openBrowseWindow: (peerDeviceId: string, path: string) => Promise<void>
+  getSharedFolderLabels: () => Promise<{ label: string; path: string }[]>
+  hasDesktopShortcut: (label: string) => Promise<boolean>
+  createDesktopShortcut: (label: string, folderPath: string) => Promise<{ ok: boolean; error?: string }>
+  removeDesktopShortcut: (label: string) => Promise<{ ok: boolean }>
   getLanUrl: () => Promise<string | null>
   resolveAbsolutePath: (peerDeviceId: string, relPath: string) => Promise<string | null>
   getOwnPreviewBaseUrl: () => Promise<string | null>
@@ -87,6 +91,7 @@ export interface ElectronAPI {
   onChatMessage: (callback: (payload: { target: string; message: ChatMessage }) => void) => () => void
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
   onPreviewSource: (callback: (source: PreviewSource) => void) => () => void
+  onOpenFolderPath: (callback: (relPath: string) => void) => () => void
 }
 
 declare global {
