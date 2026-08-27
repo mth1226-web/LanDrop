@@ -317,12 +317,17 @@ export default function FolderBrowser({
                       {entry.isDirectory ? '📁' : getPreviewKind(entry.name) === 'image' ? '🖼️' : getPreviewKind(entry.name) === 'video' ? '🎬' : '📄'}
                     </span>
                     <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
+                    {showMemoInline && meta?.memo && (
+                      <span className="entry-memo-inline" title={meta.memo}>
+                        {meta.memo}
+                      </span>
+                    )}
                     {meta?.imported && (
                       <span className="entry-badge" title="取り込み済み">
                         ✓
                       </span>
                     )}
-                    {meta?.memo && (
+                    {meta?.memo && !showMemoInline && (
                       <span className="entry-badge" title={meta.memo}>
                         📝
                       </span>
@@ -382,7 +387,6 @@ export default function FolderBrowser({
                     )}
                   </div>
                 </div>
-                {showMemoInline && meta?.memo && <p className="entry-memo-line">{meta.memo}</p>}
               </li>
             )
           })}
