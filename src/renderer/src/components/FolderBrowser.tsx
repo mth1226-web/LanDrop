@@ -92,6 +92,8 @@ interface Props {
   onCutEntries: (entries: BrowseEntry[]) => void
   onPasteEntries: () => void
   onTrashEntries: (names: string[]) => void
+  onCompressEntries: (names: string[]) => void
+  onExtractEntry: (name: string) => void
 }
 
 export default function FolderBrowser({
@@ -126,7 +128,9 @@ export default function FolderBrowser({
   onCopyEntries,
   onCutEntries,
   onPasteEntries,
-  onTrashEntries
+  onTrashEntries,
+  onCompressEntries,
+  onExtractEntry
 }: Props): JSX.Element {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false)
@@ -279,6 +283,13 @@ export default function FolderBrowser({
       { id: 'cut', label: opEntries.length > 1 ? `切り取り（${opEntries.length}件）` : '切り取り' },
       { id: 'paste', label: '貼り付け', disabled: !canPasteHere },
       { id: '__separator__', label: '' },
+      { id: 'compress', label: opEntries.length > 1 ? `圧縮 (ZIP)（${opEntries.length}件）` : '圧縮 (ZIP)' }
+    )
+    if (opEntries.length === 1 && !entry.isDirectory && entry.name.toLowerCase().endsWith('.zip')) {
+      items.push({ id: 'extract', label: 'すべて展開' })
+    }
+    items.push(
+      { id: '__separator__', label: '' },
       { id: 'delete', label: opEntries.length > 1 ? `ごみ箱に移動（${opEntries.length}件）` : 'ごみ箱に移動' },
       { id: 'details', label: '詳細' }
     )
@@ -312,6 +323,12 @@ export default function FolderBrowser({
         break
       case 'paste':
         onPasteEntries()
+        break
+      case 'compress':
+        onCompressEntries(opEntries.map((v) => v.name))
+        break
+      case 'extract':
+        onExtractEntry(entry.name)
         break
       case 'delete':
         onTrashEntries(opEntries.map((v) => v.name))
@@ -537,6 +554,12 @@ export default function FolderBrowser({
               </button>
               <button className="button secondary" onClick={() => onCutEntries(selectedEntries)}>
                 切り取り（{selectedEntries.length}）
+              </button>
+              <button
+                className="button secondary"
+                onClick={() => onCompressEntries(selectedEntries.map((v) => v.name))}
+              >
+                圧縮 (ZIP)（{selectedEntries.length}）
               </button>
               <button
                 className="button secondary"

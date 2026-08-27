@@ -105,6 +105,26 @@ export function trashRemote(address: string, port: number, relPath: string, name
   return postJson(address, port, '/api/trash', { path: relPath, name })
 }
 
+/** 相手PC自身の共有フォルダ内で、選択したエントリを同じ場所にzipとしてまとめてもらう */
+export function compressRemote(
+  address: string,
+  port: number,
+  relPath: string,
+  names: string[]
+): Promise<{ ok: boolean; name: string }> {
+  return postJsonWithResponse(address, port, '/api/compress', { path: relPath, names })
+}
+
+/** 相手PC自身の共有フォルダ内で、zipファイルを同じ場所に展開してもらう */
+export function extractRemote(
+  address: string,
+  port: number,
+  relPath: string,
+  name: string
+): Promise<{ ok: boolean; name: string }> {
+  return postJsonWithResponse(address, port, '/api/extract', { path: relPath, name })
+}
+
 function postFile(params: {
   address: string
   port: number

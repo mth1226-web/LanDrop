@@ -14,6 +14,8 @@ import {
   renameEntryRemote,
   pasteRemote,
   trashRemote,
+  compressRemote,
+  extractRemote,
   uploadFile,
   uploadZip,
   downloadFile,
@@ -277,6 +279,86 @@ test('trashRemoteは存在しないファイルに対して失敗する', async 
   const label = path.basename(folderA)
   try {
     await assert.rejects(() => trashRemote('127.0.0.1', port, label, 'does-not-exist.txt'))
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('compressRemoteで選択した複数エントリが1つのzipにまとまる(元も残る)', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.writeFileSync(path.join(folderA, 'a.txt'), 'A')
+    fs.mkdirSync(path.join(folderA, 'sub'))
+    fs.writeFileSync(path.join(folderA, 'sub', 'b.txt'), 'B')
+
+    const result = await compressRemote('127.0.0.1', port, label, ['a.txt', 'sub'])
+    assert.equal(result.ok, true)
+    assert.equal(result.name, '圧縮.zip')
+    assert.equal(fs.existsSync(path.join(folderA, 'a.txt')), true)
+    assert.equal(fs.existsSync(path.join(folderA, 'sub')), true)
+
+    const extractDir = fs.mkdtempSync(path.join(os.tmpdir(), 'landrop-compress-extract-'))
+    await extractZip(path.join(folderA, '圧縮.zip'), { dir: extractDir })
+    assert.equal(fs.readFileSync(path.join(extractDir, 'a.txt'), 'utf-8'), 'A')
+    assert.equal(fs.readFileSync(path.join(extractDir, 'sub', 'b.txt'), 'utf-8'), 'B')
+    fs.rmSync(extractDir, { recursive: true, force: true })
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('compressRemoteは単一エントリの場合"名前.zip"を使い、衝突時は連番を振る', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.writeFileSync(path.join(folderA, 'a.txt'), 'A')
+    fs.writeFileSync(path.join(folderA, 'a.txt.zip'), 'existing-zip')
+
+    const result = await compressRemote('127.0.0.1', port, label, ['a.txt'])
+    assert.equal(result.name, 'a.txt (1).zip')
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('extractRemoteでzipが同じ場所に展開される', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'landrop-extract-src-'))
+    fs.writeFileSync(path.join(srcDir, 'inner.txt'), 'hello')
+    await zipDirectoryContents(srcDir, path.join(folderA, 'archive.zip'))
+    fs.rmSync(srcDir, { recursive: true, force: true })
+
+    const result = await extractRemote('127.0.0.1', port, label, 'archive.zip')
+    assert.equal(result.ok, true)
+    assert.equal(result.name, 'archive')
+    assert.equal(fs.readFileSync(path.join(folderA, 'archive', 'inner.txt'), 'utf-8'), 'hello')
+    // 元のzipはそのまま残る
+    assert.equal(fs.existsSync(path.join(folderA, 'archive.zip')), true)
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('extractRemoteは存在しないzipに対して失敗する', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    await assert.rejects(() => extractRemote('127.0.0.1', port, label, 'does-not-exist.zip'))
   } finally {
     await server.stop()
     fs.rmSync(folderA, { recursive: true, force: true })

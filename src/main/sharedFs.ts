@@ -2,6 +2,8 @@
 // すべての操作は必ずresolveSafePathを通し、共有ルートの外にアクセスできないことを保証する
 import fs from 'node:fs'
 import path from 'node:path'
+import archiver from 'archiver'
+import extractZip from 'extract-zip'
 import type { BrowseEntry } from '../shared/types'
 import { resolveUniquePath } from './fileSave'
 
@@ -104,6 +106,46 @@ export function moveEntry(
   const newName = copyEntry(srcRoot, srcRelPath, name, destRoot, destRelPath)
   fs.rmSync(from, { recursive: true, force: true })
   return newName
+}
+
+/** 選択した複数のファイル/フォルダを、同じ場所に新しいzipファイルとしてまとめる。実際に付いたzipのファイル名を返す */
+export async function compressEntries(root: string, relPath: string, names: string[]): Promise<string> {
+  const parent = resolveSafePath(root, relPath)
+  if (!parent) throw new Error('invalid path')
+  if (names.length === 0) throw new Error('no entries')
+  for (const name of names) {
+    if (!fs.existsSync(path.join(parent, name))) throw new Error('not found')
+  }
+  const zipBaseName = names.length === 1 ? `${names[0]}.zip` : '圧縮.zip'
+  const destPath = resolveUniquePath(parent, zipBaseName)
+
+  await new Promise<void>((resolve, reject) => {
+    const output = fs.createWriteStream(destPath)
+    const archive = archiver('zip', { zlib: { level: 6 } })
+    output.on('close', () => resolve())
+    archive.on('error', reject)
+    archive.pipe(output)
+    for (const name of names) {
+      const abs = path.join(parent, name)
+      if (fs.statSync(abs).isDirectory()) archive.directory(abs, name)
+      else archive.file(abs, { name })
+    }
+    void archive.finalize()
+  })
+
+  return path.basename(destPath)
+}
+
+/** zipファイルを、同じ場所に(zip名から".zip"を除いた)新しいフォルダとして展開する。実際に付いたフォルダ名を返す */
+export async function extractZipEntry(root: string, relPath: string, name: string): Promise<string> {
+  const parent = resolveSafePath(root, relPath)
+  if (!parent) throw new Error('invalid path')
+  const zipPath = path.join(parent, name)
+  if (!fs.existsSync(zipPath)) throw new Error('not found')
+  const baseName = name.toLowerCase().endsWith('.zip') ? name.slice(0, -4) : name
+  const destDir = resolveUniquePath(parent, baseName || 'archive')
+  await extractZip(zipPath, { dir: destDir })
+  return path.basename(destDir)
 }
 
 export function ensureSharedFolder(root: string): void {

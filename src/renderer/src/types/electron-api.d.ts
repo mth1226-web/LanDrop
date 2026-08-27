@@ -47,6 +47,8 @@ export interface ElectronAPI {
     mode: PasteMode
   ) => Promise<EntryOpResult[]>
   trashEntries: (peerDeviceId: string, relPath: string, names: string[]) => Promise<EntryOpResult[]>
+  compressEntries: (peerDeviceId: string, relPath: string, names: string[]) => Promise<{ ok: boolean; name?: string; error?: string }>
+  extractEntry: (peerDeviceId: string, relPath: string, name: string) => Promise<{ ok: boolean; name?: string; error?: string }>
 
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>

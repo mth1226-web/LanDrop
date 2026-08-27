@@ -16,7 +16,9 @@ import {
   renameEntry,
   isValidEntryName,
   copyEntry,
-  moveEntry
+  moveEntry,
+  compressEntries,
+  extractZipEntry
 } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { renderWebUiHtml } from './webUi'
@@ -92,6 +94,8 @@ export class HttpServer extends EventEmitter {
       if (req.method === 'POST' && url.pathname === '/api/rename') return void this.handleRename(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/paste') return void this.handlePaste(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/trash') return void this.handleTrash(req, res, url)
+      if (req.method === 'POST' && url.pathname === '/api/compress') return void this.handleCompress(req, res, url)
+      if (req.method === 'POST' && url.pathname === '/api/extract') return void this.handleExtract(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/chat') return void this.handleChat(req, res)
     } catch (err) {
       this.sendJson(res, 500, { ok: false, error: String(err) })
@@ -347,6 +351,34 @@ export class HttpServer extends EventEmitter {
       if (!target || !fs.existsSync(target)) throw new Error('not found')
       await this.trashPath(target)
       this.sendJson(res, 200, { ok: true })
+    } catch (err) {
+      this.sendJson(res, 400, { ok: false, error: String(err) })
+    }
+  }
+
+  /** 選択したエントリを同じ場所にzipとしてまとめる(右クリック「圧縮」) */
+  private async handleCompress(req: http.IncomingMessage, res: http.ServerResponse, _url: URL): Promise<void> {
+    let body: { path: string; names: string[] }
+    try {
+      body = await this.readJsonBody(req, JSON_BODY_LIMIT_BYTES)
+      const resolved = resolveSharedEntry(this.getSharedFolders(), body.path)
+      if (!resolved) throw new Error('invalid path')
+      const name = await compressEntries(resolved.rootPath, resolved.innerRelPath, body.names)
+      this.sendJson(res, 200, { ok: true, name })
+    } catch (err) {
+      this.sendJson(res, 400, { ok: false, error: String(err) })
+    }
+  }
+
+  /** zipファイルを同じ場所に展開する(右クリック「展開」) */
+  private async handleExtract(req: http.IncomingMessage, res: http.ServerResponse, _url: URL): Promise<void> {
+    let body: { path: string; name: string }
+    try {
+      body = await this.readJsonBody(req, JSON_BODY_LIMIT_BYTES)
+      const resolved = resolveSharedEntry(this.getSharedFolders(), body.path)
+      if (!resolved) throw new Error('invalid path')
+      const name = await extractZipEntry(resolved.rootPath, resolved.innerRelPath, body.name)
+      this.sendJson(res, 200, { ok: true, name })
     } catch (err) {
       this.sendJson(res, 400, { ok: false, error: String(err) })
     }

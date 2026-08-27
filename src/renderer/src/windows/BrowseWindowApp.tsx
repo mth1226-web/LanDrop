@@ -85,6 +85,8 @@ export default function BrowseWindowApp({ peerDeviceId, initialPath }: Props): J
             onCutEntries={session.handleCutEntries}
             onPasteEntries={session.handlePasteEntries}
             onTrashEntries={session.handleTrashEntries}
+            onCompressEntries={session.handleCompressEntries}
+            onExtractEntry={session.handleExtractEntry}
           />
         </div>
       </main>

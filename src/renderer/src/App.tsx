@@ -146,6 +146,8 @@ export default function App(): JSX.Element {
               onCutEntries={session.handleCutEntries}
               onPasteEntries={session.handlePasteEntries}
               onTrashEntries={session.handleTrashEntries}
+              onCompressEntries={session.handleCompressEntries}
+              onExtractEntry={session.handleExtractEntry}
             />
           ) : (
             <div className="panel folder-browser">

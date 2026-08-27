@@ -59,6 +59,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('paste-entries', { peerDeviceId, srcRelPath, destRelPath, entries, mode }),
   trashEntries: (peerDeviceId: string, relPath: string, names: string[]): Promise<EntryOpResult[]> =>
     ipcRenderer.invoke('trash-entries', { peerDeviceId, relPath, names }),
+  compressEntries: (peerDeviceId: string, relPath: string, names: string[]): Promise<{ ok: boolean; name?: string; error?: string }> =>
+    ipcRenderer.invoke('compress-entries', { peerDeviceId, relPath, names }),
+  extractEntry: (peerDeviceId: string, relPath: string, name: string): Promise<{ ok: boolean; name?: string; error?: string }> =>
+    ipcRenderer.invoke('extract-entry', { peerDeviceId, relPath, name }),
 
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),

@@ -155,6 +155,20 @@ export function useFolderSession({ peerDeviceId, previewBaseUrl, initialPath = '
     reloadEntries()
   }
 
+  async function handleCompressEntries(names: string[]): Promise<void> {
+    if (!peerDeviceId || names.length === 0) return
+    const result = await window.electronAPI.compressEntries(peerDeviceId, currentPath, names)
+    if (!result.ok) window.alert(`圧縮できませんでした: ${result.error ?? ''}`)
+    reloadEntries()
+  }
+
+  async function handleExtractEntry(name: string): Promise<void> {
+    if (!peerDeviceId) return
+    const result = await window.electronAPI.extractEntry(peerDeviceId, currentPath, name)
+    if (!result.ok) window.alert(`展開できませんでした: ${result.error ?? ''}`)
+    reloadEntries()
+  }
+
   return {
     currentPath,
     setCurrentPath,
@@ -178,6 +192,8 @@ export function useFolderSession({ peerDeviceId, previewBaseUrl, initialPath = '
     handleCopyEntries,
     handleCutEntries,
     handlePasteEntries,
-    handleTrashEntries
+    handleTrashEntries,
+    handleCompressEntries,
+    handleExtractEntry
   }
 }

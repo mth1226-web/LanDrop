@@ -13,6 +13,8 @@ import {
   renameEntryRemote,
   pasteRemote,
   trashRemote,
+  compressRemote,
+  extractRemote,
   uploadFile,
   uploadZip,
   downloadFile,
@@ -28,7 +30,9 @@ import {
   resolveSafePath,
   ensureSharedFolder,
   copyEntry,
-  moveEntry
+  moveEntry,
+  compressEntries,
+  extractZipEntry
 } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
@@ -425,6 +429,28 @@ async function pasteOneEntry(
   return result.name
 }
 
+/** 選択したエントリを同じ場所にzipとしてまとめる。実際に付いたzipのファイル名を返す */
+async function compressEntriesFor(peerDeviceId: string, relPath: string, names: string[]): Promise<string> {
+  if (peerDeviceId === settings.deviceId) {
+    const resolved = resolveSelfSharedEntry(relPath)
+    return compressEntries(resolved.rootPath, resolved.innerRelPath, names)
+  }
+  const peer = findPeerOrThrow(peerDeviceId)
+  const result = await compressRemote(peer.address, peer.httpPort, relPath, names)
+  return result.name
+}
+
+/** zipファイルを同じ場所に展開する。実際に付いたフォルダ名を返す */
+async function extractZipEntryFor(peerDeviceId: string, relPath: string, name: string): Promise<string> {
+  if (peerDeviceId === settings.deviceId) {
+    const resolved = resolveSelfSharedEntry(relPath)
+    return extractZipEntry(resolved.rootPath, resolved.innerRelPath, name)
+  }
+  const peer = findPeerOrThrow(peerDeviceId)
+  const result = await extractRemote(peer.address, peer.httpPort, relPath, name)
+  return result.name
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle('get-peers', () => discovery?.getPeers() ?? [])
 
@@ -586,6 +612,30 @@ function registerIpcHandlers(): void {
         }
       }
       return results
+    }
+  )
+
+  ipcMain.handle(
+    'compress-entries',
+    async (_event, args: { peerDeviceId: string; relPath: string; names: string[] }) => {
+      try {
+        const name = await compressEntriesFor(args.peerDeviceId, args.relPath, args.names)
+        return { ok: true, name }
+      } catch (err) {
+        return { ok: false, error: String(err) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'extract-entry',
+    async (_event, args: { peerDeviceId: string; relPath: string; name: string }) => {
+      try {
+        const name = await extractZipEntryFor(args.peerDeviceId, args.relPath, args.name)
+        return { ok: true, name }
+      } catch (err) {
+        return { ok: false, error: String(err) }
+      }
     }
   )
 
