@@ -68,6 +68,7 @@ export default function FolderBrowser({
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [showHidden, setShowHidden] = useState(false)
   const [showMemoInline, setShowMemoInline] = useState(true)
+  const [showThumbnails, setShowThumbnails] = useState(true)
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -244,6 +245,12 @@ export default function FolderBrowser({
               {showMemoInline ? 'メモを行から隠す' : 'メモを行に表示'}
             </button>
           )}
+          <button
+            className={showThumbnails ? 'button secondary small active' : 'button secondary small'}
+            onClick={() => setShowThumbnails((v) => !v)}
+          >
+            {showThumbnails ? 'プレビューを隠す' : 'プレビューを表示'}
+          </button>
           {!isSelf && selectedEntries.length > 0 && (
             <button className="button primary" onClick={() => onDownload(selectedEntries)}>
               選択した{selectedEntries.length}件をダウンロード
@@ -277,7 +284,7 @@ export default function FolderBrowser({
             const meta = metadata[entry.name]
             const override = downloadFolderOverrides[entry.name]
             const thumbUrl =
-              !entry.isDirectory && previewBaseUrl && getPreviewKind(entry.name) === 'image'
+              showThumbnails && !entry.isDirectory && previewBaseUrl && getPreviewKind(entry.name) === 'image'
                 ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, entry.name))}`
                 : null
             return (
