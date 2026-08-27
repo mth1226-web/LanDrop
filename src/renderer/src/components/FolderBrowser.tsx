@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BrowseEntry, EntryMetadata, SortMode } from '../../../shared/types'
-import { joinRelPath, pathSegments } from '../store'
+import { joinRelPath, parentRelPath, pathSegments } from '../store'
 import { formatBytes, hexToRgba } from '../utils/format'
 import { getPreviewKind } from '../utils/previewKind'
 import { markInternalDragStart, markInternalDragEnd, isInternalDragActive } from '../utils/internalDrag'
@@ -76,6 +76,21 @@ export default function FolderBrowser({
   useEffect(() => {
     setSelectedNames(new Set())
   }, [currentPath])
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent): void {
+      if (e.key !== 'Backspace' || isAtRoot) return
+      const active = document.activeElement
+      const isEditing =
+        active instanceof HTMLElement &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
+      if (isEditing) return
+      e.preventDefault()
+      onNavigate(parentRelPath(currentPath))
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [currentPath, isAtRoot, onNavigate])
 
   function toggleSelected(name: string): void {
     setSelectedNames((prev) => {
@@ -170,19 +185,29 @@ export default function FolderBrowser({
       onDrop={handleDrop}
     >
       <div className="folder-browser-header">
-        <nav className="breadcrumb">
-          <button className="breadcrumb-item" onClick={() => onNavigate('')}>
-            {peerName}
+        <div className="breadcrumb-row">
+          <button
+            className="button secondary small breadcrumb-back"
+            title="ひとつ上の階層へ戻る（Backspaceキーでも戻れます）"
+            disabled={isAtRoot}
+            onClick={() => onNavigate(parentRelPath(currentPath))}
+          >
+            ← 戻る
           </button>
-          {segments.map((seg, i) => (
-            <span key={i}>
-              <span className="breadcrumb-sep">/</span>
-              <button className="breadcrumb-item" onClick={() => onNavigate(segments.slice(0, i + 1).join('/'))}>
-                {seg}
-              </button>
-            </span>
-          ))}
-        </nav>
+          <nav className="breadcrumb">
+            <button className="breadcrumb-item" onClick={() => onNavigate('')}>
+              {peerName}
+            </button>
+            {segments.map((seg, i) => (
+              <span key={i}>
+                <span className="breadcrumb-sep">/</span>
+                <button className="breadcrumb-item" onClick={() => onNavigate(segments.slice(0, i + 1).join('/'))}>
+                  {seg}
+                </button>
+              </span>
+            ))}
+          </nav>
+        </div>
         <div className="folder-browser-actions">
           <div className="sort-mode-switch">
             <button
@@ -281,7 +306,8 @@ export default function FolderBrowser({
                   )}
                   <button
                     className="entry-main"
-                    onClick={() => {
+                    title="ダブルクリックで開く"
+                    onDoubleClick={() => {
                       if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
                       else if (getPreviewKind(entry.name)) onPreviewEntry(entry)
                     }}
