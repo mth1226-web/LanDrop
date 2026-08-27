@@ -65,6 +65,7 @@ export default function FolderBrowser({
   const [detailsEntry, setDetailsEntry] = useState<BrowseEntry | null>(null)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [showHidden, setShowHidden] = useState(false)
+  const [showMemoInline, setShowMemoInline] = useState(false)
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -147,6 +148,7 @@ export default function FolderBrowser({
   }
 
   const hiddenCount = entries.filter((e) => metadata[e.name]?.hidden).length
+  const memoCount = entries.filter((e) => metadata[e.name]?.memo).length
   const sortedEntries = sortEntries(entries, sortMode, customOrder)
   const visibleEntries = sortedEntries.filter((e) => showHidden || !metadata[e.name]?.hidden)
   const selectedEntries = visibleEntries.filter((e) => selectedNames.has(e.name))
@@ -207,6 +209,14 @@ export default function FolderBrowser({
               {showHidden ? '非表示項目を隠す' : `非表示項目を表示（${hiddenCount}）`}
             </button>
           )}
+          {memoCount > 0 && (
+            <button
+              className={showMemoInline ? 'button secondary small active' : 'button secondary small'}
+              onClick={() => setShowMemoInline((v) => !v)}
+            >
+              メモを行に表示
+            </button>
+          )}
           {!isSelf && selectedEntries.length > 0 && (
             <button className="button primary" onClick={() => onDownload(selectedEntries)}>
               選択した{selectedEntries.length}件をダウンロード
@@ -260,90 +270,93 @@ export default function FolderBrowser({
                 onDrop={(e) => handleReorderDrop(e, entry)}
                 onDragEnd={handleEntryDragEnd}
               >
-                {!isSelf && (
-                  <input
-                    type="checkbox"
-                    className="entry-checkbox"
-                    checked={selectedNames.has(entry.name)}
-                    onChange={() => toggleSelected(entry.name)}
-                  />
-                )}
-                <button
-                  className="entry-main"
-                  onClick={() => {
-                    if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
-                    else if (getPreviewKind(entry.name)) onPreviewEntry(entry)
-                  }}
-                  disabled={!entry.isDirectory && !getPreviewKind(entry.name)}
-                >
-                  <span className="entry-icon">
-                    {entry.isDirectory ? '📁' : getPreviewKind(entry.name) === 'image' ? '🖼️' : getPreviewKind(entry.name) === 'video' ? '🎬' : '📄'}
-                  </span>
-                  <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
-                  {meta?.imported && (
-                    <span className="entry-badge" title="取り込み済み">
-                      ✓
-                    </span>
-                  )}
-                  {meta?.memo && (
-                    <span className="entry-badge" title={meta.memo}>
-                      📝
-                    </span>
-                  )}
-                  {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
-                </button>
-                <div className="entry-actions">
-                  {sortMode === 'manual' && (
-                    <span className="entry-reorder">
-                      <button
-                        className="button secondary small"
-                        title="上へ移動"
-                        onClick={() => onMoveEntry(entry.name, 'up')}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        className="button secondary small"
-                        title="下へ移動"
-                        onClick={() => onMoveEntry(entry.name, 'down')}
-                      >
-                        ↓
-                      </button>
-                    </span>
-                  )}
+                <div className="entry-row">
                   {!isSelf && (
-                    <button className="button secondary small" onClick={() => onDownload([entry])}>
-                      ダウンロード
-                    </button>
+                    <input
+                      type="checkbox"
+                      className="entry-checkbox"
+                      checked={selectedNames.has(entry.name)}
+                      onChange={() => toggleSelected(entry.name)}
+                    />
                   )}
-                  {!entry.isDirectory && isSelf && (
-                    <button className="button secondary small" onClick={() => onRevealLocal(entry)}>
-                      フォルダで表示
-                    </button>
-                  )}
-                  {isAtRoot &&
-                    (override ? (
-                      <button
-                        className="button secondary small"
-                        title={override}
-                        onClick={() => onRemoveDownloadFolderOverride(entry.name)}
-                      >
-                        保存先を解除
-                      </button>
-                    ) : (
-                      <button className="button secondary small" onClick={() => onSetDownloadFolderOverride(entry.name)}>
-                        保存先を設定
-                      </button>
-                    ))}
-                  <button className="button secondary small" onClick={() => setDetailsEntry(entry)}>
-                    詳細
+                  <button
+                    className="entry-main"
+                    onClick={() => {
+                      if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                      else if (getPreviewKind(entry.name)) onPreviewEntry(entry)
+                    }}
+                    disabled={!entry.isDirectory && !getPreviewKind(entry.name)}
+                  >
+                    <span className="entry-icon">
+                      {entry.isDirectory ? '📁' : getPreviewKind(entry.name) === 'image' ? '🖼️' : getPreviewKind(entry.name) === 'video' ? '🎬' : '📄'}
+                    </span>
+                    <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
+                    {meta?.imported && (
+                      <span className="entry-badge" title="取り込み済み">
+                        ✓
+                      </span>
+                    )}
+                    {meta?.memo && (
+                      <span className="entry-badge" title={meta.memo}>
+                        📝
+                      </span>
+                    )}
+                    {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
                   </button>
-                  {!isAtRoot && (
-                    <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
-                      名前変更
+                  <div className="entry-actions">
+                    {sortMode === 'manual' && (
+                      <span className="entry-reorder">
+                        <button
+                          className="button secondary small"
+                          title="上へ移動"
+                          onClick={() => onMoveEntry(entry.name, 'up')}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          className="button secondary small"
+                          title="下へ移動"
+                          onClick={() => onMoveEntry(entry.name, 'down')}
+                        >
+                          ↓
+                        </button>
+                      </span>
+                    )}
+                    {!isSelf && (
+                      <button className="button secondary small" onClick={() => onDownload([entry])}>
+                        ダウンロード
+                      </button>
+                    )}
+                    {!entry.isDirectory && isSelf && (
+                      <button className="button secondary small" onClick={() => onRevealLocal(entry)}>
+                        フォルダで表示
+                      </button>
+                    )}
+                    {isAtRoot &&
+                      (override ? (
+                        <button
+                          className="button secondary small"
+                          title={override}
+                          onClick={() => onRemoveDownloadFolderOverride(entry.name)}
+                        >
+                          保存先を解除
+                        </button>
+                      ) : (
+                        <button className="button secondary small" onClick={() => onSetDownloadFolderOverride(entry.name)}>
+                          保存先を設定
+                        </button>
+                      ))}
+                    <button className="button secondary small" onClick={() => setDetailsEntry(entry)}>
+                      詳細
                     </button>
-                  )}
+                    {!isAtRoot && (
+                      <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
+                        名前変更
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {showMemoInline && meta?.memo && <p className="entry-memo-line">{meta.memo}</p>}
               </li>
             )
           })}
