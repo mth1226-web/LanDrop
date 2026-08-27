@@ -1,86 +1,26 @@
 import { useEffect, useState } from 'react'
-import { useAppStore, joinRelPath } from './store'
+import { useAppStore } from './store'
 import PeerList from './components/PeerList'
 import FolderBrowser from './components/FolderBrowser'
 import ActivityList from './components/ActivityList'
 import FirewallHintBanner from './components/FirewallHintBanner'
-import type { BrowseEntry, EntryMetadata, Peer, SortMode, ViewMode } from '../../shared/types'
-import { effectiveManualOrder, moveNameInOrder, moveNameRelativeTo } from './utils/sortEntries'
+import { useFolderSession } from './hooks/useFolderSession'
+import type { Peer, SortMode, ViewMode } from '../../shared/types'
 
 export default function App(): JSX.Element {
   const peers = useAppStore((s) => s.peers)
   const settings = useAppStore((s) => s.settings)
   const activities = useAppStore((s) => s.activities)
   const selectedPeerId = useAppStore((s) => s.selectedPeerId)
-  const currentPath = useAppStore((s) => s.currentPath)
-  const entries = useAppStore((s) => s.entries)
-  const entryMetadata = useAppStore((s) => s.entryMetadata)
-  const isLoadingEntries = useAppStore((s) => s.isLoadingEntries)
   const updateState = useAppStore((s) => s.updateState)
 
   const setPeers = useAppStore((s) => s.setPeers)
   const setSettings = useAppStore((s) => s.setSettings)
   const upsertActivity = useAppStore((s) => s.upsertActivity)
   const selectPeer = useAppStore((s) => s.selectPeer)
-  const setCurrentPath = useAppStore((s) => s.setCurrentPath)
-  const setEntries = useAppStore((s) => s.setEntries)
-  const setEntryMetadata = useAppStore((s) => s.setEntryMetadata)
-  const upsertEntryMetadata = useAppStore((s) => s.upsertEntryMetadata)
-  const setLoadingEntries = useAppStore((s) => s.setLoadingEntries)
   const setUpdateState = useAppStore((s) => s.setUpdateState)
 
   const [ownPreviewBaseUrl, setOwnPreviewBaseUrl] = useState<string | null>(null)
-  const [customOrder, setCustomOrderState] = useState<string[]>([])
-
-  useEffect(() => {
-    window.electronAPI.getPeers().then(setPeers)
-    window.electronAPI.getSettings().then(setSettings)
-    const unsubscribePeers = window.electronAPI.onPeersChanged(setPeers)
-    const unsubscribeActivity = window.electronAPI.onActivityUpdated(upsertActivity)
-    const unsubscribeUploaded = window.electronAPI.onPeerUploaded(() => reloadEntries())
-    const unsubscribeUpdate = window.electronAPI.onUpdateState(setUpdateState)
-    const unsubscribeSettings = window.electronAPI.onSettingsChanged(setSettings)
-    void window.electronAPI.checkForUpdate()
-    window.electronAPI.getOwnPreviewBaseUrl().then(setOwnPreviewBaseUrl)
-    return () => {
-      unsubscribePeers()
-      unsubscribeActivity()
-      unsubscribeUploaded()
-      unsubscribeUpdate()
-      unsubscribeSettings()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (settings && !selectedPeerId) selectPeer(settings.deviceId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings])
-
-  useEffect(() => {
-    reloadEntries()
-    // 別ウインドウの設定画面で共有フォルダが追加/削除された場合もここで再読み込みする
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPeerId, currentPath, settings?.sharedFolders])
-
-  function reloadEntries(): void {
-    if (!selectedPeerId) return
-    setLoadingEntries(true)
-    window.electronAPI
-      .browseFolder(selectedPeerId, currentPath)
-      .then((list) => {
-        setEntries(list)
-        return window.electronAPI.getEntryMetadataForChildren(
-          selectedPeerId,
-          currentPath,
-          list.map((e) => e.name)
-        )
-      })
-      .then(setEntryMetadata)
-      .catch(() => setEntries([]))
-      .finally(() => setLoadingEntries(false))
-    window.electronAPI.getCustomOrder(selectedPeerId, currentPath).then(setCustomOrderState)
-  }
 
   const isSelf = selectedPeerId === settings?.deviceId
   const displayPeers: Peer[] = settings
@@ -93,54 +33,41 @@ export default function App(): JSX.Element {
   const activityList = Object.values(activities).sort((a, b) => b.createdAt - a.createdAt)
   const previewBaseUrl = isSelf ? ownPreviewBaseUrl : selectedPeer ? `http://${selectedPeer.address}:${selectedPeer.httpPort}` : null
 
-  function handleUploadFiles(filePaths: string[]): void {
-    if (!selectedPeerId) return
-    window.electronAPI.uploadFiles(selectedPeerId, currentPath, filePaths).then(() => reloadEntries())
-  }
+  const session = useFolderSession({ peerDeviceId: selectedPeerId, previewBaseUrl })
 
-  function handleCreateFolder(name: string): void {
-    if (!selectedPeerId) return
-    window.electronAPI.createFolder(selectedPeerId, currentPath, name).then(() => reloadEntries())
-  }
+  useEffect(() => {
+    window.electronAPI.getPeers().then(setPeers)
+    window.electronAPI.getSettings().then(setSettings)
+    const unsubscribePeers = window.electronAPI.onPeersChanged(setPeers)
+    const unsubscribeActivity = window.electronAPI.onActivityUpdated(upsertActivity)
+    const unsubscribeUpdate = window.electronAPI.onUpdateState(setUpdateState)
+    const unsubscribeSettings = window.electronAPI.onSettingsChanged(setSettings)
+    void window.electronAPI.checkForUpdate()
+    window.electronAPI.getOwnPreviewBaseUrl().then(setOwnPreviewBaseUrl)
+    return () => {
+      unsubscribePeers()
+      unsubscribeActivity()
+      unsubscribeUpdate()
+      unsubscribeSettings()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  function handleRename(oldName: string, newName: string): void {
-    if (!selectedPeerId) return
-    window.electronAPI.renameEntry(selectedPeerId, currentPath, oldName, newName).then(() => reloadEntries())
-  }
+  useEffect(() => {
+    return window.electronAPI.onPeerUploaded(() => session.reloadEntries())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.reloadEntries])
 
-  function handleDownload(selected: BrowseEntry[]): void {
-    if (!selectedPeerId || selected.length === 0) return
-    void window.electronAPI.downloadEntries(selectedPeerId, currentPath, selected)
-  }
+  useEffect(() => {
+    if (settings && !selectedPeerId) selectPeer(settings.deviceId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings])
 
-  function handleRevealLocal(entry: BrowseEntry): void {
-    void window.electronAPI.revealLocalFile(joinRelPath(currentPath, entry.name))
-  }
-
-  function handlePreviewEntry(entry: BrowseEntry): void {
-    if (!previewBaseUrl) return
-    const relPath = joinRelPath(currentPath, entry.name)
-    void window.electronAPI.openPreviewWindow({
-      url: `${previewBaseUrl}/api/download?path=${encodeURIComponent(relPath)}&inline=1`,
-      name: entry.name
-    })
-  }
-
-  async function handleSaveMetadata(entryName: string, patch: Partial<EntryMetadata>): Promise<void> {
-    if (!selectedPeerId) return
-    const updated = await window.electronAPI.setEntryMetadata(selectedPeerId, joinRelPath(currentPath, entryName), patch)
-    upsertEntryMetadata(entryName, updated)
-  }
-
-  async function handleSetDownloadFolderOverride(label: string): Promise<void> {
-    const updated = await window.electronAPI.chooseDownloadFolderOverride(label)
-    setSettings(updated)
-  }
-
-  async function handleRemoveDownloadFolderOverride(label: string): Promise<void> {
-    const updated = await window.electronAPI.removeDownloadFolderOverride(label)
-    setSettings(updated)
-  }
+  useEffect(() => {
+    // 別ウインドウの設定画面で共有フォルダが追加/削除された場合もここで再読み込みする
+    session.reloadEntries()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.sharedFolders])
 
   async function handleChangeSortMode(mode: SortMode): Promise<void> {
     const updated = await window.electronAPI.setSortMode(mode)
@@ -152,20 +79,9 @@ export default function App(): JSX.Element {
     setSettings(updated)
   }
 
-  async function handleMoveEntry(name: string, direction: 'up' | 'down'): Promise<void> {
+  function handleOpenNewWindow(): void {
     if (!selectedPeerId) return
-    const order = effectiveManualOrder(entries, customOrder)
-    const nextOrder = moveNameInOrder(order, name, direction)
-    const saved = await window.electronAPI.setCustomOrder(selectedPeerId, currentPath, nextOrder)
-    setCustomOrderState(saved)
-  }
-
-  async function handleReorderEntries(draggedName: string, targetName: string, after: boolean): Promise<void> {
-    if (!selectedPeerId || draggedName === targetName) return
-    const order = effectiveManualOrder(entries, customOrder)
-    const nextOrder = moveNameRelativeTo(order, draggedName, targetName, after)
-    const saved = await window.electronAPI.setCustomOrder(selectedPeerId, currentPath, nextOrder)
-    setCustomOrderState(saved)
+    void window.electronAPI.openBrowseWindow(selectedPeerId, session.currentPath)
   }
 
   return (
@@ -173,6 +89,9 @@ export default function App(): JSX.Element {
       <header className="app-header">
         <h1>LanDrop</h1>
         <div className="app-header-actions">
+          <button className="button secondary" onClick={handleOpenNewWindow} disabled={!selectedPeerId}>
+            新しいウインドウ
+          </button>
           <button className="button secondary" onClick={() => void window.electronAPI.openPreviewWindow(null)}>
             プレビュー
           </button>
@@ -197,31 +116,36 @@ export default function App(): JSX.Element {
             <FolderBrowser
               peerName={isSelf ? `${selectedPeer.deviceName}（自分）` : selectedPeer.deviceName}
               peerDeviceId={selectedPeer.deviceId}
-              currentPath={currentPath}
-              entries={entries}
-              metadata={entryMetadata}
+              currentPath={session.currentPath}
+              entries={session.entries}
+              metadata={session.entryMetadata}
               downloadFolderOverrides={settings?.downloadFolderOverrides ?? {}}
-              isLoading={isLoadingEntries}
+              isLoading={session.isLoadingEntries}
               isSelf={isSelf}
               previewBaseUrl={previewBaseUrl}
               accentColor={settings?.accentColor}
               sortMode={settings?.sortMode ?? 'name'}
               viewMode={settings?.viewMode ?? 'details'}
-              customOrder={customOrder}
-              onNavigate={setCurrentPath}
-              onUploadFiles={handleUploadFiles}
-              onCreateFolder={handleCreateFolder}
-              onRename={handleRename}
-              onDownload={handleDownload}
-              onRevealLocal={handleRevealLocal}
-              onSaveMetadata={handleSaveMetadata}
-              onSetDownloadFolderOverride={handleSetDownloadFolderOverride}
-              onRemoveDownloadFolderOverride={handleRemoveDownloadFolderOverride}
-              onPreviewEntry={handlePreviewEntry}
+              customOrder={session.customOrder}
+              onNavigate={session.setCurrentPath}
+              onUploadFiles={session.handleUploadFiles}
+              onCreateFolder={session.handleCreateFolder}
+              onRename={session.handleRename}
+              onDownload={session.handleDownload}
+              onRevealLocal={session.handleRevealLocal}
+              onSaveMetadata={session.handleSaveMetadata}
+              onSetDownloadFolderOverride={session.handleSetDownloadFolderOverride}
+              onRemoveDownloadFolderOverride={session.handleRemoveDownloadFolderOverride}
+              onPreviewEntry={session.handlePreviewEntry}
               onChangeSortMode={handleChangeSortMode}
               onChangeViewMode={handleChangeViewMode}
-              onMoveEntry={handleMoveEntry}
-              onReorderEntries={handleReorderEntries}
+              onMoveEntry={session.handleMoveEntry}
+              onReorderEntries={session.handleReorderEntries}
+              clipboard={session.clipboard}
+              onCopyEntries={session.handleCopyEntries}
+              onCutEntries={session.handleCutEntries}
+              onPasteEntries={session.handlePasteEntries}
+              onTrashEntries={session.handleTrashEntries}
             />
           ) : (
             <div className="panel folder-browser">

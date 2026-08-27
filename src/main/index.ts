@@ -11,6 +11,8 @@ import {
   browseFolder,
   createFolderRemote,
   renameEntryRemote,
+  pasteRemote,
+  trashRemote,
   uploadFile,
   uploadZip,
   downloadFile,
@@ -18,7 +20,16 @@ import {
   sendChatMessage
 } from './transferClient'
 import { loadSettings, saveSettings } from './settings'
-import { browseShared, resolveSharedEntry, createFolder, renameEntry, resolveSafePath, ensureSharedFolder } from './sharedFs'
+import {
+  browseShared,
+  resolveSharedEntry,
+  createFolder,
+  renameEntry,
+  resolveSafePath,
+  ensureSharedFolder,
+  copyEntry,
+  moveEntry
+} from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
 import { getLanAddress, getLanInterfaces } from './localNetwork'
@@ -51,6 +62,7 @@ let settingsWindow: BrowserWindow | null = null
 let chatWindow: BrowserWindow | null = null
 let updateWindow: BrowserWindow | null = null
 let previewWindow: BrowserWindow | null = null
+let browseWindows: BrowserWindow[] = []
 let settings: AppSettings
 let httpServer: HttpServer | null = null
 let discovery: Discovery | null = null
@@ -223,6 +235,22 @@ function openUpdateWindow(): void {
   })
 }
 
+/** ピア固定・PC一覧やヘッダーメニューなしの閲覧専用ウインドウ。何個でも同時に開ける */
+function openBrowseWindow(peerDeviceId: string, path: string): void {
+  const route = `browse?peer=${encodeURIComponent(peerDeviceId)}&path=${encodeURIComponent(path)}`
+  const win = createWindow(route, {
+    width: 800,
+    height: 600,
+    minWidth: 480,
+    minHeight: 360,
+    title: 'LanDrop'
+  })
+  browseWindows.push(win)
+  win.on('closed', () => {
+    browseWindows = browseWindows.filter((w) => w !== win)
+  })
+}
+
 function openPreviewWindow(source: { url: string; name: string } | null): void {
   if (previewWindow && !previewWindow.isDestroyed()) {
     previewWindow.focus()
@@ -312,7 +340,8 @@ function buildApplicationMenu(): void {
 async function startNetworking(): Promise<void> {
   httpServer = new HttpServer({
     getSharedFolders: () => settings.sharedFolders,
-    getDeviceName: () => settings.deviceName
+    getDeviceName: () => settings.deviceName,
+    trashPath: (absPath) => shell.trashItem(absPath)
   })
   ownHttpPort = await httpServer.start(0)
 
@@ -370,6 +399,30 @@ function resolveSelfSharedEntry(relPath: string): { rootPath: string; innerRelPa
   const resolved = resolveSharedEntry(settings.sharedFolders, relPath)
   if (!resolved) throw new Error('invalid-path')
   return resolved
+}
+
+/**
+ * 貼り付け(コピー/移動)を1件実行し、実際に付いたファイル名を返す。
+ * 現状は「同じ端末(自分 or 特定の1台のリモート)の共有フォルダ内」のみ対応。
+ * 別々の2台のリモート間や、自分↔リモートをまたいだ貼り付けは今後の拡張。
+ */
+async function pasteOneEntry(
+  peerDeviceId: string,
+  srcRelPath: string,
+  entry: BrowseEntry,
+  destRelPath: string,
+  mode: 'copy' | 'move'
+): Promise<string> {
+  if (peerDeviceId === settings.deviceId) {
+    const src = resolveSelfSharedEntry(srcRelPath)
+    const dest = resolveSelfSharedEntry(destRelPath)
+    return mode === 'move'
+      ? moveEntry(src.rootPath, src.innerRelPath, entry.name, dest.rootPath, dest.innerRelPath)
+      : copyEntry(src.rootPath, src.innerRelPath, entry.name, dest.rootPath, dest.innerRelPath)
+  }
+  const peer = findPeerOrThrow(peerDeviceId)
+  const result = await pasteRemote(peer.address, peer.httpPort, srcRelPath, entry.name, destRelPath, mode)
+  return result.name
 }
 
 function registerIpcHandlers(): void {
@@ -489,6 +542,50 @@ function registerIpcHandlers(): void {
         const peer = findPeerOrThrow(args.peerDeviceId)
         await renameEntryRemote(peer.address, peer.httpPort, args.relPath, args.oldName, args.newName)
       }
+    }
+  )
+
+  ipcMain.handle(
+    'paste-entries',
+    async (
+      _event,
+      args: { peerDeviceId: string; srcRelPath: string; destRelPath: string; entries: BrowseEntry[]; mode: 'copy' | 'move' }
+    ) => {
+      const results: { name: string; ok: boolean; error?: string }[] = []
+      for (const entry of args.entries) {
+        try {
+          const finalName = await pasteOneEntry(args.peerDeviceId, args.srcRelPath, entry, args.destRelPath, args.mode)
+          results.push({ name: finalName, ok: true })
+        } catch (err) {
+          results.push({ name: entry.name, ok: false, error: String(err) })
+        }
+      }
+      return results
+    }
+  )
+
+  ipcMain.handle(
+    'trash-entries',
+    async (_event, args: { peerDeviceId: string; relPath: string; names: string[] }) => {
+      const results: { name: string; ok: boolean; error?: string }[] = []
+      for (const name of args.names) {
+        try {
+          if (args.peerDeviceId === settings.deviceId) {
+            const resolved = resolveSelfSharedEntry(args.relPath)
+            const parent = resolveSafePath(resolved.rootPath, resolved.innerRelPath)
+            const target = parent ? join(parent, name) : null
+            if (!target || !existsSync(target)) throw new Error('not-found')
+            await shell.trashItem(target)
+          } else {
+            const peer = findPeerOrThrow(args.peerDeviceId)
+            await trashRemote(peer.address, peer.httpPort, args.relPath, name)
+          }
+          results.push({ name, ok: true })
+        } catch (err) {
+          results.push({ name, ok: false, error: String(err) })
+        }
+      }
+      return results
     }
   )
 
@@ -844,6 +941,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('open-update-window', () => openUpdateWindow())
   ipcMain.handle('open-preview-window', (_event, source: { url: string; name: string } | null) =>
     openPreviewWindow(source)
+  )
+  ipcMain.handle('open-browse-window', (_event, args: { peerDeviceId: string; path: string }) =>
+    openBrowseWindow(args.peerDeviceId, args.path)
   )
 }
 

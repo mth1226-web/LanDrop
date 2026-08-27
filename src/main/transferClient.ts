@@ -26,6 +26,10 @@ function getJson<T>(address: string, port: number, path: string): Promise<T> {
 }
 
 function postJson(address: string, port: number, path: string, body: unknown): Promise<void> {
+  return postJsonWithResponse(address, port, path, body).then(() => undefined)
+}
+
+function postJsonWithResponse<T>(address: string, port: number, path: string, body: unknown): Promise<T> {
   return new Promise((resolve, reject) => {
     const payload = Buffer.from(JSON.stringify(body), 'utf-8')
     const req = http.request(
@@ -37,12 +41,19 @@ function postJson(address: string, port: number, path: string, body: unknown): P
         headers: { 'content-type': 'application/json', 'content-length': payload.length }
       },
       (res) => {
-        res.resume()
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          resolve()
-        } else {
-          reject(new Error(`unexpected status ${res.statusCode}`))
-        }
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')) as T)
+            } catch (err) {
+              reject(err)
+            }
+          } else {
+            reject(new Error(`unexpected status ${res.statusCode}`))
+          }
+        })
       }
     )
     req.on('error', reject)
@@ -75,6 +86,23 @@ export function renameEntryRemote(
   newName: string
 ): Promise<void> {
   return postJson(address, port, '/api/rename', { path: relPath, oldName, newName })
+}
+
+/** 相手PC自身の共有フォルダ内で、エントリを別フォルダへコピー/移動してもらう(貼り付け用) */
+export function pasteRemote(
+  address: string,
+  port: number,
+  srcRelPath: string,
+  name: string,
+  destRelPath: string,
+  mode: 'copy' | 'move'
+): Promise<{ ok: boolean; name: string }> {
+  return postJsonWithResponse(address, port, '/api/paste', { srcPath: srcRelPath, name, destPath: destRelPath, mode })
+}
+
+/** 相手PC自身の共有フォルダ内のエントリを、相手のOSのごみ箱へ移動してもらう */
+export function trashRemote(address: string, port: number, relPath: string, name: string): Promise<void> {
+  return postJson(address, port, '/api/trash', { path: relPath, name })
 }
 
 function postFile(params: {

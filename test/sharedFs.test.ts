@@ -12,7 +12,9 @@ import {
   computeFolderLabels,
   listSharedRoots,
   resolveSharedEntry,
-  browseShared
+  browseShared,
+  copyEntry,
+  moveEntry
 } from '../src/main/sharedFs'
 
 function makeRoot(): string {
@@ -147,4 +149,53 @@ test('browseSharedはrelPathが空ならルート一覧、それ以外は中身�
 
 test('browseSharedは未知のラベルに対して例外を投げる', () => {
   assert.throws(() => browseShared([], '存在しない'))
+})
+
+test('copyEntryは別フォルダへファイルをコピーし、元も残る', () => {
+  const root = makeRoot()
+  fs.mkdirSync(path.join(root, 'dest'))
+  fs.writeFileSync(path.join(root, 'a.txt'), 'hello')
+
+  const finalName = copyEntry(root, '', 'a.txt', root, 'dest')
+  assert.equal(finalName, 'a.txt')
+  assert.equal(fs.existsSync(path.join(root, 'a.txt')), true)
+  assert.equal(fs.readFileSync(path.join(root, 'dest', 'a.txt'), 'utf-8'), 'hello')
+})
+
+test('copyEntryは同名衝突時に連番を振る', () => {
+  const root = makeRoot()
+  fs.mkdirSync(path.join(root, 'dest'))
+  fs.writeFileSync(path.join(root, 'a.txt'), 'new')
+  fs.writeFileSync(path.join(root, 'dest', 'a.txt'), 'existing')
+
+  const finalName = copyEntry(root, '', 'a.txt', root, 'dest')
+  assert.equal(finalName, 'a (1).txt')
+  assert.equal(fs.readFileSync(path.join(root, 'dest', 'a.txt'), 'utf-8'), 'existing')
+  assert.equal(fs.readFileSync(path.join(root, 'dest', 'a (1).txt'), 'utf-8'), 'new')
+})
+
+test('copyEntryはフォルダ自身の中へのコピーを拒否する', () => {
+  const root = makeRoot()
+  fs.mkdirSync(path.join(root, 'folder', 'sub'), { recursive: true })
+  assert.throws(() => copyEntry(root, '', 'folder', root, 'folder/sub'))
+})
+
+test('copyEntryは別の共有ルート間でもコピーできる', () => {
+  const rootA = makeRoot()
+  const rootB = makeRoot()
+  fs.writeFileSync(path.join(rootA, 'a.txt'), 'cross-root')
+
+  copyEntry(rootA, '', 'a.txt', rootB, '')
+  assert.equal(fs.readFileSync(path.join(rootB, 'a.txt'), 'utf-8'), 'cross-root')
+})
+
+test('moveEntryはコピー後に元を削除する', () => {
+  const root = makeRoot()
+  fs.mkdirSync(path.join(root, 'dest'))
+  fs.writeFileSync(path.join(root, 'a.txt'), 'move-me')
+
+  const finalName = moveEntry(root, '', 'a.txt', root, 'dest')
+  assert.equal(finalName, 'a.txt')
+  assert.equal(fs.existsSync(path.join(root, 'a.txt')), false)
+  assert.equal(fs.readFileSync(path.join(root, 'dest', 'a.txt'), 'utf-8'), 'move-me')
 })

@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { BrowseEntry } from '../shared/types'
+import { resolveUniquePath } from './fileSave'
 
 /** rootの外に出るrelPathはnullを返す（パストラバーサル対策） */
 export function resolveSafePath(root: string, relPath: string): string | null {
@@ -58,6 +59,51 @@ export function renameEntry(root: string, relPath: string, oldName: string, newN
   if (!fs.existsSync(from)) throw new Error('not found')
   if (fs.existsSync(to)) throw new Error('already exists')
   fs.renameSync(from, to)
+}
+
+/** srcが(root, relPath)配下にあるとして、それをdestの祖先に含んでいないか(自分自身への再帰コピー防止) */
+function isInsideOrSame(destParent: string, src: string): boolean {
+  const srcResolved = path.resolve(src) + path.sep
+  const destResolved = path.resolve(destParent) + path.sep
+  return destResolved === srcResolved || destResolved.startsWith(srcResolved)
+}
+
+/** エントリを別フォルダ(同じ共有ルート内でも別ルートでもよい)へコピーする。衝突する場合は連番を振る。実際に付いたファイル名を返す */
+export function copyEntry(
+  srcRoot: string,
+  srcRelPath: string,
+  name: string,
+  destRoot: string,
+  destRelPath: string
+): string {
+  const srcParent = resolveSafePath(srcRoot, srcRelPath)
+  const destParent = resolveSafePath(destRoot, destRelPath)
+  if (!srcParent || !destParent) throw new Error('invalid path')
+  const from = path.join(srcParent, name)
+  if (!fs.existsSync(from)) throw new Error('not found')
+  if (fs.statSync(from).isDirectory() && isInsideOrSame(destParent, from)) {
+    throw new Error('cannot copy a folder into itself')
+  }
+  const to = resolveUniquePath(destParent, name)
+  fs.cpSync(from, to, { recursive: true })
+  return path.basename(to)
+}
+
+/** コピーしてから元を削除することで「移動」を実現する(ドライブをまたいでも安全に動く)。実際に付いたファイル名を返す */
+export function moveEntry(
+  srcRoot: string,
+  srcRelPath: string,
+  name: string,
+  destRoot: string,
+  destRelPath: string
+): string {
+  const srcParent = resolveSafePath(srcRoot, srcRelPath)
+  if (!srcParent) throw new Error('invalid path')
+  const from = path.join(srcParent, name)
+  if (!fs.existsSync(from)) throw new Error('not found')
+  const newName = copyEntry(srcRoot, srcRelPath, name, destRoot, destRelPath)
+  fs.rmSync(from, { recursive: true, force: true })
+  return newName
 }
 
 export function ensureSharedFolder(root: string): void {

@@ -3,7 +3,9 @@ import type {
   BrowseEntry,
   ChatMessage,
   EntryMetadata,
+  EntryOpResult,
   NetworkInterfaceOption,
+  PasteMode,
   Peer,
   PreviewSource,
   SortMode,
@@ -37,6 +39,14 @@ export interface ElectronAPI {
   uploadFiles: (peerDeviceId: string, relPath: string, filePaths: string[]) => Promise<{ ok: boolean; error?: string }>
   downloadFile: (peerDeviceId: string, relPath: string, fileName: string, size: number) => Promise<{ ok: boolean }>
   downloadEntries: (peerDeviceId: string, relPath: string, entries: BrowseEntry[]) => Promise<{ ok: boolean }>
+  pasteEntries: (
+    peerDeviceId: string,
+    srcRelPath: string,
+    destRelPath: string,
+    entries: BrowseEntry[],
+    mode: PasteMode
+  ) => Promise<EntryOpResult[]>
+  trashEntries: (peerDeviceId: string, relPath: string, names: string[]) => Promise<EntryOpResult[]>
 
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>
@@ -44,6 +54,7 @@ export interface ElectronAPI {
   openChatWindow: () => Promise<void>
   openUpdateWindow: () => Promise<void>
   openPreviewWindow: (source: PreviewSource | null) => Promise<void>
+  openBrowseWindow: (peerDeviceId: string, path: string) => Promise<void>
   getLanUrl: () => Promise<string | null>
   getOwnPreviewBaseUrl: () => Promise<string | null>
   listNetworkInterfaces: () => Promise<NetworkInterfaceOption[]>

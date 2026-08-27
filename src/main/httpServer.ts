@@ -8,7 +8,16 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import archiver from 'archiver'
 import extractZip from 'extract-zip'
-import { browseShared, resolveSharedEntry, resolveSafePath, createFolder, renameEntry, isValidEntryName } from './sharedFs'
+import {
+  browseShared,
+  resolveSharedEntry,
+  resolveSafePath,
+  createFolder,
+  renameEntry,
+  isValidEntryName,
+  copyEntry,
+  moveEntry
+} from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { renderWebUiHtml } from './webUi'
 import { guessMimeType } from './mimeType'
@@ -34,11 +43,17 @@ export class HttpServer extends EventEmitter {
   private readonly server: http.Server
   private readonly getSharedFolders: () => string[]
   private readonly getDeviceName: () => string
+  private readonly trashPath: (absPath: string) => Promise<void>
 
-  constructor(options: { getSharedFolders: () => string[]; getDeviceName: () => string }) {
+  constructor(options: {
+    getSharedFolders: () => string[]
+    getDeviceName: () => string
+    trashPath: (absPath: string) => Promise<void>
+  }) {
     super()
     this.getSharedFolders = options.getSharedFolders
     this.getDeviceName = options.getDeviceName
+    this.trashPath = options.trashPath
     this.server = http.createServer((req, res) => this.handleRequest(req, res))
   }
 
@@ -75,6 +90,8 @@ export class HttpServer extends EventEmitter {
       if (req.method === 'POST' && url.pathname === '/api/upload-zip') return void this.handleUploadZip(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/mkdir') return void this.handleMkdir(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/rename') return void this.handleRename(req, res, url)
+      if (req.method === 'POST' && url.pathname === '/api/paste') return void this.handlePaste(req, res, url)
+      if (req.method === 'POST' && url.pathname === '/api/trash') return void this.handleTrash(req, res, url)
       if (req.method === 'POST' && url.pathname === '/api/chat') return void this.handleChat(req, res)
     } catch (err) {
       this.sendJson(res, 500, { ok: false, error: String(err) })
@@ -299,6 +316,40 @@ export class HttpServer extends EventEmitter {
       return
     }
     this.sendJson(res, 200, { ok: true })
+  }
+
+  /** 同じ端末の共有フォルダ内で、エントリを別フォルダへコピー/移動する(貼り付け機能) */
+  private async handlePaste(req: http.IncomingMessage, res: http.ServerResponse, _url: URL): Promise<void> {
+    let body: { srcPath: string; name: string; destPath: string; mode: 'copy' | 'move' }
+    try {
+      body = await this.readJsonBody(req, JSON_BODY_LIMIT_BYTES)
+      const src = resolveSharedEntry(this.getSharedFolders(), body.srcPath)
+      const dest = resolveSharedEntry(this.getSharedFolders(), body.destPath)
+      if (!src || !dest) throw new Error('invalid path')
+      const finalName =
+        body.mode === 'move'
+          ? moveEntry(src.rootPath, src.innerRelPath, body.name, dest.rootPath, dest.innerRelPath)
+          : copyEntry(src.rootPath, src.innerRelPath, body.name, dest.rootPath, dest.innerRelPath)
+      this.sendJson(res, 200, { ok: true, name: finalName })
+    } catch (err) {
+      this.sendJson(res, 400, { ok: false, error: String(err) })
+    }
+  }
+
+  /** エントリをOSのごみ箱(Windowsのごみ箱/macOSのTrash)へ移動する */
+  private async handleTrash(req: http.IncomingMessage, res: http.ServerResponse, _url: URL): Promise<void> {
+    let body: { path: string; name: string }
+    try {
+      body = await this.readJsonBody(req, JSON_BODY_LIMIT_BYTES)
+      const resolved = resolveSharedEntry(this.getSharedFolders(), body.path)
+      const parent = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
+      const target = parent ? path.join(parent, body.name) : null
+      if (!target || !fs.existsSync(target)) throw new Error('not found')
+      await this.trashPath(target)
+      this.sendJson(res, 200, { ok: true })
+    } catch (err) {
+      this.sendJson(res, 400, { ok: false, error: String(err) })
+    }
   }
 
   private async handleChat(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

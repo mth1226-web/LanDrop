@@ -5,9 +5,11 @@ import SettingsWindowApp from './windows/SettingsWindowApp'
 import ChatWindowApp from './windows/ChatWindowApp'
 import UpdateWindowApp from './windows/UpdateWindowApp'
 import PreviewWindowApp from './windows/PreviewWindowApp'
+import BrowseWindowApp from './windows/BrowseWindowApp'
 import './App.css'
 
-const route = window.location.hash.replace(/^#/, '')
+const rawRoute = window.location.hash.replace(/^#/, '')
+const [route, routeQuery] = rawRoute.split('?')
 
 function RootByRoute(): JSX.Element {
   switch (route) {
@@ -19,6 +21,10 @@ function RootByRoute(): JSX.Element {
       return <UpdateWindowApp />
     case 'preview':
       return <PreviewWindowApp />
+    case 'browse': {
+      const params = new URLSearchParams(routeQuery)
+      return <BrowseWindowApp peerDeviceId={params.get('peer') ?? ''} initialPath={params.get('path') ?? ''} />
+    }
     default:
       return <App />
   }

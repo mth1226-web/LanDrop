@@ -12,6 +12,8 @@ import {
   browseFolder,
   createFolderRemote,
   renameEntryRemote,
+  pasteRemote,
+  trashRemote,
   uploadFile,
   uploadZip,
   downloadFile,
@@ -76,7 +78,12 @@ function getText(port: number, path: string): Promise<{ status: number; contentT
 // 実httpサーバーを1台localhostに立て、複数共有フォルダのbrowse/upload/download/mkdir/renameを検証する
 
 function makeServer(sharedFolders: string[]): { server: HttpServer; sharedFolders: string[] } {
-  const server = new HttpServer({ getSharedFolders: () => sharedFolders, getDeviceName: () => 'テストPC' })
+  const server = new HttpServer({
+    getSharedFolders: () => sharedFolders,
+    getDeviceName: () => 'テストPC',
+    // 実際のOSごみ箱は使わず、テストでは削除で代用する
+    trashPath: async (absPath) => fs.rmSync(absPath, { recursive: true, force: true })
+  })
   return { server, sharedFolders }
 }
 
@@ -203,6 +210,73 @@ test('同名ファイルをuploadすると衝突を避けてリネームされ�
     assert.equal(fs.readFileSync(path.join(folderA, 'dup (1).txt'), 'utf-8'), 'new-content')
 
     fs.rmSync(srcPath, { force: true })
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('pasteRemote(copy)で共有フォルダ内の別フォルダへコピーできる(元も残る)', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.mkdirSync(path.join(folderA, 'dest'))
+    fs.writeFileSync(path.join(folderA, 'a.txt'), 'paste-me')
+
+    const result = await pasteRemote('127.0.0.1', port, label, 'a.txt', `${label}/dest`, 'copy')
+    assert.equal(result.ok, true)
+    assert.equal(result.name, 'a.txt')
+    assert.equal(fs.existsSync(path.join(folderA, 'a.txt')), true)
+    assert.equal(fs.readFileSync(path.join(folderA, 'dest', 'a.txt'), 'utf-8'), 'paste-me')
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('pasteRemote(move)で共有フォルダ内の別フォルダへ移動できる(元は消える)', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.mkdirSync(path.join(folderA, 'dest'))
+    fs.writeFileSync(path.join(folderA, 'a.txt'), 'move-me')
+
+    const result = await pasteRemote('127.0.0.1', port, label, 'a.txt', `${label}/dest`, 'move')
+    assert.equal(result.ok, true)
+    assert.equal(fs.existsSync(path.join(folderA, 'a.txt')), false)
+    assert.equal(fs.readFileSync(path.join(folderA, 'dest', 'a.txt'), 'utf-8'), 'move-me')
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('trashRemoteでファイルが削除される(テストではtrashPathをrmSyncで代用)', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    fs.writeFileSync(path.join(folderA, 'a.txt'), 'trash-me')
+    await trashRemote('127.0.0.1', port, label, 'a.txt')
+    assert.equal(fs.existsSync(path.join(folderA, 'a.txt')), false)
+  } finally {
+    await server.stop()
+    fs.rmSync(folderA, { recursive: true, force: true })
+  }
+})
+
+test('trashRemoteは存在しないファイルに対して失敗する', async () => {
+  const folderA = makeTempDir()
+  const { server } = makeServer([folderA])
+  const port = await server.start(0)
+  const label = path.basename(folderA)
+  try {
+    await assert.rejects(() => trashRemote('127.0.0.1', port, label, 'does-not-exist.txt'))
   } finally {
     await server.stop()
     fs.rmSync(folderA, { recursive: true, force: true })

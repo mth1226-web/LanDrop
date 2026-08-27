@@ -49,6 +49,15 @@ export interface BrowseEntry {
   modifiedAt: number
 }
 
+export type PasteMode = 'copy' | 'move'
+
+/** コピー/移動/ごみ箱移動を複数件まとめて実行した際の、1件ごとの結果 */
+export interface EntryOpResult {
+  name: string
+  ok: boolean
+  error?: string
+}
+
 export type ActivityDirection = 'upload' | 'download'
 export type ActivityStatus = 'in_progress' | 'completed' | 'failed'
 

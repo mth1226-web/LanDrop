@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BrowseEntry, EntryMetadata, SortMode, ViewMode } from '../../../shared/types'
+import type { BrowseEntry, EntryMetadata, PasteMode, SortMode, ViewMode } from '../../../shared/types'
 import { joinRelPath, parentRelPath, pathSegments } from '../store'
 import { formatBytes, formatDate, hexToRgba } from '../utils/format'
 import { getPreviewKind } from '../utils/previewKind'
@@ -87,6 +87,11 @@ interface Props {
   onChangeViewMode: (mode: ViewMode) => void
   onMoveEntry: (name: string, direction: 'up' | 'down') => void
   onReorderEntries: (draggedName: string, targetName: string, after: boolean) => void
+  clipboard: { peerDeviceId: string; mode: PasteMode; count: number } | null
+  onCopyEntries: (entries: BrowseEntry[]) => void
+  onCutEntries: (entries: BrowseEntry[]) => void
+  onPasteEntries: () => void
+  onTrashEntries: (names: string[]) => void
 }
 
 export default function FolderBrowser({
@@ -116,7 +121,12 @@ export default function FolderBrowser({
   onChangeSortMode,
   onChangeViewMode,
   onMoveEntry,
-  onReorderEntries
+  onReorderEntries,
+  clipboard,
+  onCopyEntries,
+  onCutEntries,
+  onPasteEntries,
+  onTrashEntries
 }: Props): JSX.Element {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false)
@@ -128,6 +138,7 @@ export default function FolderBrowser({
   const [showThumbnails, setShowThumbnails] = useState(true)
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const [ancestorColumns, setAncestorColumns] = useState<ColumnData[]>([])
   const [columnsLoading, setColumnsLoading] = useState(false)
   const [columnFileSelection, setColumnFileSelection] = useState<string | null>(null)
@@ -169,22 +180,8 @@ export default function FolderBrowser({
 
   useEffect(() => {
     setSelectedNames(new Set())
+    setSearchQuery('')
   }, [currentPath])
-
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent): void {
-      if (e.key !== 'Backspace' || isAtRoot) return
-      const active = document.activeElement
-      const isEditing =
-        active instanceof HTMLElement &&
-        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
-      if (isEditing) return
-      e.preventDefault()
-      onNavigate(parentRelPath(currentPath))
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [currentPath, isAtRoot, onNavigate])
 
   function toggleSelected(name: string): void {
     setSelectedNames((prev) => {
@@ -258,7 +255,13 @@ export default function FolderBrowser({
 
   async function handleEntryContextMenu(e: React.MouseEvent, entry: BrowseEntry): Promise<void> {
     e.preventDefault()
+    // 右クリックした項目が選択中の複数選択に含まれていれば選択全体を、そうでなければその1件だけを対象にする
+    const opEntries =
+      selectedNames.size > 0 && selectedNames.has(entry.name)
+        ? visibleEntries.filter((v) => selectedNames.has(v.name))
+        : [entry]
     const override = downloadFolderOverrides[entry.name]
+    const canPasteHere = !isAtRoot && clipboard?.peerDeviceId === peerDeviceId
     const items: { id: string; label: string; disabled?: boolean }[] = []
     if (sortMode === 'manual') {
       items.push({ id: 'moveUp', label: '上へ移動' }, { id: 'moveDown', label: '下へ移動' }, { id: '__separator__', label: '' })
@@ -270,7 +273,15 @@ export default function FolderBrowser({
         override ? { id: 'removeOverride', label: '保存先を解除' } : { id: 'setOverride', label: '保存先を設定' }
       )
     }
-    items.push({ id: 'details', label: '詳細' })
+    items.push(
+      { id: '__separator__', label: '' },
+      { id: 'copy', label: opEntries.length > 1 ? `コピー（${opEntries.length}件）` : 'コピー' },
+      { id: 'cut', label: opEntries.length > 1 ? `切り取り（${opEntries.length}件）` : '切り取り' },
+      { id: 'paste', label: '貼り付け', disabled: !canPasteHere },
+      { id: '__separator__', label: '' },
+      { id: 'delete', label: opEntries.length > 1 ? `ごみ箱に移動（${opEntries.length}件）` : 'ごみ箱に移動' },
+      { id: 'details', label: '詳細' }
+    )
     if (!isAtRoot) items.push({ id: 'rename', label: '名前変更' })
 
     const actionId = await window.electronAPI.showEntryContextMenu(items)
@@ -293,6 +304,18 @@ export default function FolderBrowser({
       case 'removeOverride':
         onRemoveDownloadFolderOverride(entry.name)
         break
+      case 'copy':
+        onCopyEntries(opEntries)
+        break
+      case 'cut':
+        onCutEntries(opEntries)
+        break
+      case 'paste':
+        onPasteEntries()
+        break
+      case 'delete':
+        onTrashEntries(opEntries.map((v) => v.name))
+        break
       case 'details':
         setDetailsEntry(entry)
         break
@@ -305,7 +328,10 @@ export default function FolderBrowser({
   const hiddenCount = entries.filter((e) => metadata[e.name]?.hidden).length
   const memoCount = entries.filter((e) => metadata[e.name]?.memo).length
   const sortedEntries = sortEntries(entries, sortMode, customOrder)
-  const visibleEntries = sortedEntries.filter((e) => showHidden || !metadata[e.name]?.hidden)
+  const searchLower = searchQuery.trim().toLowerCase()
+  const visibleEntries = sortedEntries.filter(
+    (e) => (showHidden || !metadata[e.name]?.hidden) && (!searchLower || e.name.toLowerCase().includes(searchLower))
+  )
   const selectedEntries = visibleEntries.filter((e) => selectedNames.has(e.name))
 
   const family = viewFamily(viewMode)
@@ -319,6 +345,82 @@ export default function FolderBrowser({
     const icon = entry.isDirectory ? '📁' : kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : '📄'
     return { entry, meta, kind, thumbUrl, icon, override: downloadFolderOverrides[entry.name] }
   })
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent): void {
+      const active = document.activeElement
+      const isEditing =
+        active instanceof HTMLElement &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
+      if (isEditing) return
+      const modifier = e.ctrlKey || e.metaKey
+
+      if (e.key === 'Backspace' && !isAtRoot) {
+        e.preventDefault()
+        onNavigate(parentRelPath(currentPath))
+        return
+      }
+
+      if (modifier && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault()
+        setSelectedNames(new Set(visibleEntries.map((v) => v.name)))
+        return
+      }
+
+      const selected = visibleEntries.filter((v) => selectedNames.has(v.name))
+
+      if (modifier && (e.key === 'c' || e.key === 'C') && selected.length > 0) {
+        e.preventDefault()
+        onCopyEntries(selected)
+        return
+      }
+
+      if (modifier && (e.key === 'x' || e.key === 'X') && selected.length > 0) {
+        e.preventDefault()
+        onCutEntries(selected)
+        return
+      }
+
+      if (modifier && (e.key === 'v' || e.key === 'V') && clipboard && !isAtRoot) {
+        e.preventDefault()
+        onPasteEntries()
+        return
+      }
+
+      if (e.key === 'Delete' && selected.length > 0) {
+        e.preventDefault()
+        onTrashEntries(selected.map((v) => v.name))
+        return
+      }
+
+      if (e.key === 'F2' && selected.length === 1 && !isAtRoot) {
+        e.preventDefault()
+        setRenamingEntry(selected[0])
+        return
+      }
+
+      if (e.key === 'Enter' && selected.length === 1) {
+        e.preventDefault()
+        const only = selected[0]
+        if (only.isDirectory) onNavigate(joinRelPath(currentPath, only.name))
+        else if (getPreviewKind(only.name)) onPreviewEntry(only)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [
+    currentPath,
+    isAtRoot,
+    onNavigate,
+    visibleEntries,
+    selectedNames,
+    clipboard,
+    onCopyEntries,
+    onCutEntries,
+    onPasteEntries,
+    onTrashEntries,
+    onPreviewEntry
+  ])
 
   const selfStyle: React.CSSProperties =
     isSelf && accentColor
@@ -359,6 +461,19 @@ export default function FolderBrowser({
               </span>
             ))}
           </nav>
+          <div className="search-box">
+            <input
+              type="search"
+              placeholder="このフォルダ内を検索"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="search-box-clear" title="検索をクリア" onClick={() => setSearchQuery('')}>
+                ×
+              </button>
+            )}
+          </div>
         </div>
         <div className="folder-browser-actions">
           <label className="view-mode-select">
@@ -415,6 +530,32 @@ export default function FolderBrowser({
               選択した{selectedEntries.length}件をダウンロード
             </button>
           )}
+          {selectedEntries.length > 0 && (
+            <>
+              <button className="button secondary" onClick={() => onCopyEntries(selectedEntries)}>
+                コピー（{selectedEntries.length}）
+              </button>
+              <button className="button secondary" onClick={() => onCutEntries(selectedEntries)}>
+                切り取り（{selectedEntries.length}）
+              </button>
+              <button
+                className="button secondary"
+                onClick={() => onTrashEntries(selectedEntries.map((v) => v.name))}
+              >
+                ごみ箱へ（{selectedEntries.length}）
+              </button>
+            </>
+          )}
+          {clipboard && !isAtRoot && (
+            <button
+              className="button secondary"
+              title={clipboard.peerDeviceId !== peerDeviceId ? '貼り付け元と同じ端末の共有フォルダにのみ貼り付けられます' : undefined}
+              disabled={clipboard.peerDeviceId !== peerDeviceId}
+              onClick={onPasteEntries}
+            >
+              貼り付け（{clipboard.count}）{clipboard.mode === 'move' ? '・移動' : ''}
+            </button>
+          )}
           {!isAtRoot && (
             <>
               <button className="button secondary" onClick={() => setShowNewFolderDialog(true)}>
@@ -433,9 +574,11 @@ export default function FolderBrowser({
         <p className="empty-hint">読み込み中…</p>
       ) : visibleEntries.length === 0 ? (
         <p className="empty-hint">
-          {isAtRoot
-            ? '共有フォルダがありません（設定画面から追加できます）'
-            : 'このフォルダは空です。ファイルをドラッグ&ドロップしてアップロードできます'}
+          {searchLower
+            ? `「${searchQuery}」に一致する項目がありません`
+            : isAtRoot
+              ? '共有フォルダがありません（設定画面から追加できます）'
+              : 'このフォルダは空です。ファイルをドラッグ&ドロップしてアップロードできます'}
         </p>
       ) : family === 'grid' ? (
         <ul className="entry-grid" style={{ ['--grid-min' as string]: `${GRID_MIN_COLUMN[viewMode]}px` }}>
@@ -458,14 +601,12 @@ export default function FolderBrowser({
               onDragEnd={handleEntryDragEnd}
               onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
             >
-              {!isSelf && (
-                <input
-                  type="checkbox"
-                  className="entry-card-checkbox"
-                  checked={selectedNames.has(entry.name)}
-                  onChange={() => toggleSelected(entry.name)}
-                />
-              )}
+              <input
+                type="checkbox"
+                className="entry-card-checkbox"
+                checked={selectedNames.has(entry.name)}
+                onChange={() => toggleSelected(entry.name)}
+              />
               <button
                 className="entry-card-main"
                 title="ダブルクリックで開く"
@@ -515,14 +656,12 @@ export default function FolderBrowser({
               onDragEnd={handleEntryDragEnd}
               onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
             >
-              {!isSelf && (
-                <input
-                  type="checkbox"
-                  className="entry-checkbox"
-                  checked={selectedNames.has(entry.name)}
-                  onChange={() => toggleSelected(entry.name)}
-                />
-              )}
+              <input
+                type="checkbox"
+                className="entry-checkbox"
+                checked={selectedNames.has(entry.name)}
+                onChange={() => toggleSelected(entry.name)}
+              />
               <button
                 className="entry-flow-main"
                 title="ダブルクリックで開く"
@@ -666,14 +805,12 @@ export default function FolderBrowser({
                     <img className="entry-thumb-media" src={thumbUrl} alt="" loading="lazy" />
                   </div>
                 )}
-                {!isSelf && (
-                  <input
-                    type="checkbox"
-                    className="entry-checkbox"
-                    checked={selectedNames.has(entry.name)}
-                    onChange={() => toggleSelected(entry.name)}
-                  />
-                )}
+                <input
+                  type="checkbox"
+                  className="entry-checkbox"
+                  checked={selectedNames.has(entry.name)}
+                  onChange={() => toggleSelected(entry.name)}
+                />
                 <button
                   className="entry-main"
                   title="ダブルクリックで開く"

@@ -4,7 +4,9 @@ import type {
   BrowseEntry,
   ChatMessage,
   EntryMetadata,
+  EntryOpResult,
   NetworkInterfaceOption,
+  PasteMode,
   Peer,
   PreviewSource,
   SortMode,
@@ -47,6 +49,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('download-file', { peerDeviceId, relPath, fileName, size }),
   downloadEntries: (peerDeviceId: string, relPath: string, entries: BrowseEntry[]): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('download-entries', { peerDeviceId, relPath, entries }),
+  pasteEntries: (
+    peerDeviceId: string,
+    srcRelPath: string,
+    destRelPath: string,
+    entries: BrowseEntry[],
+    mode: PasteMode
+  ): Promise<EntryOpResult[]> =>
+    ipcRenderer.invoke('paste-entries', { peerDeviceId, srcRelPath, destRelPath, entries, mode }),
+  trashEntries: (peerDeviceId: string, relPath: string, names: string[]): Promise<EntryOpResult[]> =>
+    ipcRenderer.invoke('trash-entries', { peerDeviceId, relPath, names }),
 
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),
@@ -55,6 +67,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openChatWindow: (): Promise<void> => ipcRenderer.invoke('open-chat-window'),
   openUpdateWindow: (): Promise<void> => ipcRenderer.invoke('open-update-window'),
   openPreviewWindow: (source: PreviewSource | null): Promise<void> => ipcRenderer.invoke('open-preview-window', source),
+  openBrowseWindow: (peerDeviceId: string, path: string): Promise<void> =>
+    ipcRenderer.invoke('open-browse-window', { peerDeviceId, path }),
   getLanUrl: (): Promise<string | null> => ipcRenderer.invoke('get-lan-url'),
   getOwnPreviewBaseUrl: (): Promise<string | null> => ipcRenderer.invoke('get-own-preview-base-url'),
   listNetworkInterfaces: (): Promise<NetworkInterfaceOption[]> => ipcRenderer.invoke('list-network-interfaces'),
