@@ -64,6 +64,16 @@ export function createFolder(root: string, relPath: string, name: string): void 
   fs.mkdirSync(target, { recursive: true })
 }
 
+/** rename/copy後にtoへFinderタグ色を再設定する(colorがnullなら何もしない)。書き込みに失敗しても無視する */
+function reapplyFinderTagColor(to: string, color: string | null): void {
+  if (!color) return
+  try {
+    writeFinderTagColor(to, color)
+  } catch {
+    // Mac以外、またはタグ書き込みに失敗した場合はあきらめる(元々のFinderタグ次第の表示になる)
+  }
+}
+
 export function renameEntry(root: string, relPath: string, oldName: string, newName: string): void {
   if (!isValidEntryName(newName)) throw new Error('invalid name')
   const parent = resolveSafePath(root, relPath)
@@ -72,7 +82,10 @@ export function renameEntry(root: string, relPath: string, oldName: string, newN
   const to = path.join(parent, newName)
   if (!fs.existsSync(from)) throw new Error('not found')
   if (fs.existsSync(to)) throw new Error('already exists')
+  // renameSync自体はxattrを保持するはずだが、環境によって失われる場合があるため明示的に読み直して付け直す
+  const tagColor = readFinderTagColor(from)
   fs.renameSync(from, to)
+  reapplyFinderTagColor(to, tagColor)
 }
 
 /** srcが(root, relPath)配下にあるとして、それをdestの祖先に含んでいないか(自分自身への再帰コピー防止) */
@@ -99,7 +112,9 @@ export function copyEntry(
     throw new Error('cannot copy a folder into itself')
   }
   const to = resolveUniquePath(destParent, name)
+  const tagColor = readFinderTagColor(from)
   fs.cpSync(from, to, { recursive: true })
+  reapplyFinderTagColor(to, tagColor)
   return path.basename(to)
 }
 
