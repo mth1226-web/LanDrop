@@ -91,6 +91,15 @@ export function useFolderSession({ peerDeviceId, previewBaseUrl, initialPath = '
     if (!peerDeviceId) return
     const updated = await window.electronAPI.setEntryMetadata(peerDeviceId, joinRelPath(currentPath, entryName), patch)
     setEntryMetadata((prev) => ({ ...prev, [entryName]: updated }))
+    if (patch.color !== undefined) {
+      // Mac実機のFinderカラータグにも反映を試みる(Windows側やMac以外の相手では静かに失敗する)
+      const result = await window.electronAPI.setFinderTagColor(peerDeviceId, currentPath, entryName, patch.color)
+      if (result.ok) {
+        setEntries((prev) =>
+          prev.map((e) => (e.name === entryName ? { ...e, finderTagColor: patch.color ?? null } : e))
+        )
+      }
+    }
   }
 
   async function handleSetDownloadFolderOverride(label: string): Promise<void> {

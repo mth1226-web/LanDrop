@@ -49,6 +49,12 @@ export interface ElectronAPI {
   trashEntries: (peerDeviceId: string, relPath: string, names: string[]) => Promise<EntryOpResult[]>
   compressEntries: (peerDeviceId: string, relPath: string, names: string[]) => Promise<{ ok: boolean; name?: string; error?: string }>
   extractEntry: (peerDeviceId: string, relPath: string, name: string) => Promise<{ ok: boolean; name?: string; error?: string }>
+  setFinderTagColor: (
+    peerDeviceId: string,
+    relPath: string,
+    name: string,
+    colorHex: string | null
+  ) => Promise<{ ok: boolean; error?: string }>
 
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>

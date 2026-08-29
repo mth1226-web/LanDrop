@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import type { EntryMetadata } from '../../../shared/types'
+import { FINDER_TAG_COLORS, type EntryMetadata } from '../../../shared/types'
 
-const COLOR_PRESETS = ['#4caf6a', '#5878e8', '#e0a030', '#d05a5a', '#a05ae0', '#30b8c0', '#e05a9c']
+// MacのFinderカラータグ(全7色)と同じ配色にしてある。要実機確認。
+const COLOR_PRESETS = Object.values(FINDER_TAG_COLORS)
 
 interface Props {
   entryName: string

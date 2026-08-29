@@ -377,7 +377,8 @@ export default function FolderBrowser({
         ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, entry.name))}&inline=1`
         : null
     const icon = entry.isDirectory ? '📁' : kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : '📄'
-    return { entry, meta, kind, thumbUrl, icon, override: downloadFolderOverrides[entry.name] }
+    const displayColor = entry.finderTagColor ?? meta?.color ?? null
+    return { entry, meta, kind, thumbUrl, icon, displayColor, override: downloadFolderOverrides[entry.name] }
   })
 
   useEffect(() => {
@@ -644,7 +645,7 @@ export default function FolderBrowser({
         </p>
       ) : family === 'grid' ? (
         <ul className="entry-grid" style={{ ['--grid-min' as string]: `${GRID_MIN_COLUMN[viewMode]}px` }}>
-          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon }) => (
+          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor }) => (
             <li
               key={entry.name}
               className={[
@@ -655,7 +656,7 @@ export default function FolderBrowser({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
+              style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
               draggable={sortMode === 'manual' || isSelf}
               onDragStart={(e) => handleEntryDragStart(e, entry)}
               onDragOver={(e) => handleReorderDragOver(e, entry)}
@@ -700,7 +701,7 @@ export default function FolderBrowser({
         </ul>
       ) : family === 'flow' ? (
         <ul className="entry-flow-list">
-          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon }) => (
+          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor }) => (
             <li
               key={entry.name}
               className={[
@@ -710,7 +711,7 @@ export default function FolderBrowser({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18), borderLeft: `3px solid ${meta.color}` } : undefined}
+              style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18), borderLeft: `3px solid ${displayColor}` } : undefined}
               draggable={sortMode === 'manual' || isSelf}
               onDragStart={(e) => handleEntryDragStart(e, entry)}
               onDragOver={(e) => handleReorderDragOver(e, entry)}
@@ -752,6 +753,7 @@ export default function FolderBrowser({
                 <ul className="column-browser-list">
                   {sortEntries(col.entries, sortMode, []).map((entry) => {
                     const meta = col.metadata[entry.name]
+                    const displayColor = entry.finderTagColor ?? meta?.color ?? null
                     const entryKind = entry.isDirectory ? null : getPreviewKind(entry.name)
                     const entryIcon = entry.isDirectory ? '📁' : entryKind === 'image' ? '🖼️' : entryKind === 'video' ? '🎬' : '📄'
                     return (
@@ -760,7 +762,7 @@ export default function FolderBrowser({
                           className={
                             entry.name === selectedName ? 'column-browser-item selected' : 'column-browser-item'
                           }
-                          style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
+                          style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
                           title="ダブルクリックで開く"
                           onDoubleClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
                           disabled={!entry.isDirectory}
@@ -778,13 +780,13 @@ export default function FolderBrowser({
           })}
           <div className="column-browser-col">
             <ul className="column-browser-list">
-              {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon }) => (
+              {enrichedEntries.map(({ entry, kind, thumbUrl, icon, displayColor }) => (
                 <li key={entry.name}>
                   <button
                     className={
                       columnFileSelection === entry.name ? 'column-browser-item selected' : 'column-browser-item'
                     }
-                    style={meta?.color ? { backgroundColor: hexToRgba(meta.color, 0.18) } : undefined}
+                    style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
                     title="ダブルクリックで開く"
                     onClick={() => {
                       if (!entry.isDirectory) setColumnFileSelection(entry.name)
@@ -841,7 +843,7 @@ export default function FolderBrowser({
         </div>
       ) : (
         <ul className="entry-list">
-          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, override }) => (
+          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor, override }) => (
             <li
               key={entry.name}
               className={[
@@ -852,8 +854,8 @@ export default function FolderBrowser({
                 .filter(Boolean)
                 .join(' ')}
               style={
-                meta?.color
-                  ? { backgroundColor: hexToRgba(meta.color, 0.18), borderLeft: `3px solid ${meta.color}` }
+                displayColor
+                  ? { backgroundColor: hexToRgba(displayColor, 0.18), borderLeft: `3px solid ${displayColor}` }
                   : undefined
               }
               draggable={sortMode === 'manual' || isSelf}

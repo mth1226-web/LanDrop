@@ -6,6 +6,7 @@ import archiver from 'archiver'
 import extractZip from 'extract-zip'
 import type { BrowseEntry } from '../shared/types'
 import { resolveUniquePath } from './fileSave'
+import { readFinderTagColor, writeFinderTagColor } from './finderTags'
 
 /** rootの外に出るrelPathはnullを返す（パストラバーサル対策） */
 export function resolveSafePath(root: string, relPath: string): string | null {
@@ -22,12 +23,14 @@ export function listDirectory(root: string, relPath: string): BrowseEntry[] {
   if (!dir) throw new Error('invalid path')
   const names = fs.readdirSync(dir, { withFileTypes: true })
   const entries: BrowseEntry[] = names.map((entry) => {
-    const stat = fs.statSync(path.join(dir, entry.name))
+    const entryPath = path.join(dir, entry.name)
+    const stat = fs.statSync(entryPath)
     return {
       name: entry.name,
       isDirectory: entry.isDirectory(),
       size: stat.size,
-      modifiedAt: stat.mtimeMs
+      modifiedAt: stat.mtimeMs,
+      finderTagColor: readFinderTagColor(entryPath)
     }
   })
   entries.sort((a, b) => {
@@ -35,6 +38,15 @@ export function listDirectory(root: string, relPath: string): BrowseEntry[] {
     return a.name.localeCompare(b.name)
   })
   return entries
+}
+
+/** 指定したエントリのFinderカラータグを設定する(Mac以外では何もしない) */
+export function setEntryFinderTagColor(root: string, relPath: string, name: string, colorHex: string | null): void {
+  const parent = resolveSafePath(root, relPath)
+  if (!parent) throw new Error('invalid path')
+  const target = path.join(parent, name)
+  if (!fs.existsSync(target)) throw new Error('not found')
+  writeFinderTagColor(target, colorHex)
 }
 
 const INVALID_NAME_CHARS = /[\\/:*?"<>|]/
@@ -177,7 +189,7 @@ export function listSharedRoots(folders: string[]): BrowseEntry[] {
     } catch {
       // 共有フォルダが見つからない場合は現在時刻のままにしておく
     }
-    return { name: label, isDirectory: true, size: 0, modifiedAt }
+    return { name: label, isDirectory: true, size: 0, modifiedAt, finderTagColor: readFinderTagColor(folderPath) }
   })
   entries.sort((a, b) => a.name.localeCompare(b.name))
   return entries

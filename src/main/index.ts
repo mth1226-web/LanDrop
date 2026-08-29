@@ -24,6 +24,7 @@ import {
   trashRemote,
   compressRemote,
   extractRemote,
+  setFinderTagColorRemote,
   uploadFile,
   uploadZip,
   downloadFile,
@@ -42,7 +43,8 @@ import {
   moveEntry,
   compressEntries,
   extractZipEntry,
-  computeFolderLabels
+  computeFolderLabels,
+  setEntryFinderTagColor
 } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
@@ -467,6 +469,22 @@ async function extractZipEntryFor(peerDeviceId: string, relPath: string, name: s
   return result.name
 }
 
+/** エントリのFinderカラータグを設定する(対象がMacの場合のみ実際に反映される) */
+async function setFinderTagColorFor(
+  peerDeviceId: string,
+  relPath: string,
+  name: string,
+  colorHex: string | null
+): Promise<void> {
+  if (peerDeviceId === settings.deviceId) {
+    const resolved = resolveSelfSharedEntry(relPath)
+    setEntryFinderTagColor(resolved.rootPath, resolved.innerRelPath, name, colorHex)
+    return
+  }
+  const peer = findPeerOrThrow(peerDeviceId)
+  await setFinderTagColorRemote(peer.address, peer.httpPort, relPath, name, colorHex)
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle('get-peers', () => discovery?.getPeers() ?? [])
 
@@ -649,6 +667,18 @@ function registerIpcHandlers(): void {
       try {
         const name = await extractZipEntryFor(args.peerDeviceId, args.relPath, args.name)
         return { ok: true, name }
+      } catch (err) {
+        return { ok: false, error: String(err) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'set-finder-tag-color',
+    async (_event, args: { peerDeviceId: string; relPath: string; name: string; colorHex: string | null }) => {
+      try {
+        await setFinderTagColorFor(args.peerDeviceId, args.relPath, args.name, args.colorHex)
+        return { ok: true }
       } catch (err) {
         return { ok: false, error: String(err) }
       }

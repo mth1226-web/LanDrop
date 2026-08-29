@@ -63,6 +63,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('compress-entries', { peerDeviceId, relPath, names }),
   extractEntry: (peerDeviceId: string, relPath: string, name: string): Promise<{ ok: boolean; name?: string; error?: string }> =>
     ipcRenderer.invoke('extract-entry', { peerDeviceId, relPath, name }),
+  setFinderTagColor: (
+    peerDeviceId: string,
+    relPath: string,
+    name: string,
+    colorHex: string | null
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('set-finder-tag-color', { peerDeviceId, relPath, name, colorHex }),
 
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),

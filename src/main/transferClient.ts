@@ -125,6 +125,17 @@ export function extractRemote(
   return postJsonWithResponse(address, port, '/api/extract', { path: relPath, name })
 }
 
+/** 相手PC自身の共有フォルダ内のエントリに、Finderカラータグを設定してもらう(相手がMacの場合のみ有効) */
+export function setFinderTagColorRemote(
+  address: string,
+  port: number,
+  relPath: string,
+  name: string,
+  colorHex: string | null
+): Promise<{ ok: boolean }> {
+  return postJsonWithResponse(address, port, '/api/finder-tag', { path: relPath, name, colorHex })
+}
+
 function postFile(params: {
   address: string
   port: number

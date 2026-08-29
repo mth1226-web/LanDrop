@@ -47,6 +47,22 @@ export interface BrowseEntry {
   isDirectory: boolean
   size: number
   modifiedAt: number
+  /** MacのFinderカラータグの色(16進)。Mac上のファイルでタグが付いている場合のみ。それ以外はnull */
+  finderTagColor: string | null
+}
+
+/**
+ * MacのFinderカラータグの色番号(1〜7) -> 16進カラーコード。
+ * main(finderTags.ts)とrenderer(色ピッカー)の両方から同じ値を参照する。要実機確認。
+ */
+export const FINDER_TAG_COLORS: Record<number, string> = {
+  1: '#8E8E93', // グレー
+  2: '#63C93E', // グリーン
+  3: '#B15DFA', // パープル
+  4: '#3F84F1', // ブルー
+  5: '#FFD426', // イエロー
+  6: '#FC3B32', // レッド
+  7: '#FF9600' // オレンジ
 }
 
 export type PasteMode = 'copy' | 'move'
