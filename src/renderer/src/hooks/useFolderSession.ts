@@ -68,7 +68,12 @@ export function useFolderSession({ peerDeviceId, previewBaseUrl, initialPath = '
 
   function handleRename(oldName: string, newName: string): void {
     if (!peerDeviceId) return
-    window.electronAPI.renameEntry(peerDeviceId, currentPath, oldName, newName).then(() => reloadEntries())
+    window.electronAPI
+      .renameEntry(peerDeviceId, currentPath, oldName, newName)
+      .then(() => reloadEntries())
+      .catch((err) => {
+        window.alert(`名前を変更できませんでした: ${err instanceof Error ? err.message : String(err)}`)
+      })
   }
 
   function handleDownload(selected: BrowseEntry[]): void {

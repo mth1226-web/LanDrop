@@ -996,7 +996,11 @@ export default function FolderBrowser({
       {detailsEntry && (
         <EntryDetailsDialog
           entryName={detailsEntry.name}
-          metadata={metadata[detailsEntry.name] ?? { hidden: false, color: null, memo: '', imported: false }}
+          metadata={{
+            ...(metadata[detailsEntry.name] ?? { hidden: false, color: null, memo: '', imported: false }),
+            // Finderの実タグが付いている場合はそちらを優先して表示する(でないと保存時に実タグを消してしまう)
+            color: detailsEntry.finderTagColor ?? metadata[detailsEntry.name]?.color ?? null
+          }}
           onSave={(patch) => onSaveMetadata(detailsEntry.name, patch)}
           onClose={() => setDetailsEntry(null)}
         />
