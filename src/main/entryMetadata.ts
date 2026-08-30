@@ -49,6 +49,11 @@ export function setEntryMetadata(store: EntryMetadataStore, key: string, patch: 
   return next
 }
 
+/** 親フォルダのrelPathと子要素名から、その子要素自身のrelPathを組み立てる */
+export function childRelPath(parentRelPath: string, name: string): string {
+  return parentRelPath ? `${parentRelPath}/${name}` : name
+}
+
 /** parentRelPath配下の子要素(childNames)のメタデータをまとめて取得する(1回のIPCで済ませるため) */
 export function getEntryMetadataForChildren(
   store: EntryMetadataStore,
@@ -58,8 +63,27 @@ export function getEntryMetadataForChildren(
 ): Record<string, EntryMetadata> {
   const result: Record<string, EntryMetadata> = {}
   for (const name of childNames) {
-    const relPath = parentRelPath ? `${parentRelPath}/${name}` : name
-    result[name] = getEntryMetadata(store, entryMetadataKey(peerDeviceId, relPath))
+    result[name] = getEntryMetadata(store, entryMetadataKey(peerDeviceId, childRelPath(parentRelPath, name)))
   }
   return result
+}
+
+/**
+ * リネームに合わせて、ローカルメタデータ(色/メモ/非表示/取り込み済み)のキーを旧名から新名へ引き継ぐ。
+ * これをしないと、リネーム後は新しい名前に対応するキーが存在せず、色などがデフォルトに戻って見えてしまう。
+ */
+export function renameEntryMetadataKey(
+  store: EntryMetadataStore,
+  peerDeviceId: string,
+  parentRelPath: string,
+  oldName: string,
+  newName: string
+): EntryMetadataStore {
+  const oldKey = entryMetadataKey(peerDeviceId, childRelPath(parentRelPath, oldName))
+  if (!(oldKey in store)) return store
+  const newKey = entryMetadataKey(peerDeviceId, childRelPath(parentRelPath, newName))
+  const next = { ...store }
+  next[newKey] = next[oldKey]
+  delete next[oldKey]
+  return next
 }

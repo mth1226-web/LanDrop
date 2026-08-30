@@ -54,7 +54,8 @@ import {
   loadEntryMetadataStore,
   saveEntryMetadataStore,
   setEntryMetadata,
-  getEntryMetadataForChildren
+  getEntryMetadataForChildren,
+  renameEntryMetadataKey
 } from './entryMetadata'
 import type { EntryMetadataStore } from './entryMetadata'
 import { resolveDownloadDestination } from './downloadDestination'
@@ -602,6 +603,15 @@ function registerIpcHandlers(): void {
         const peer = findPeerOrThrow(args.peerDeviceId)
         await renameEntryRemote(peer.address, peer.httpPort, args.relPath, args.oldName, args.newName)
       }
+      // ローカルの色分け/メモ等はrelPathをキーに保存しているため、リネームに合わせて引き継ぐ
+      entryMetadataStore = renameEntryMetadataKey(
+        entryMetadataStore,
+        args.peerDeviceId,
+        args.relPath,
+        args.oldName,
+        args.newName
+      )
+      saveEntryMetadataStore(getEntryMetadataFilePath(), entryMetadataStore)
     }
   )
 
