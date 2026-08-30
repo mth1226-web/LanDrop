@@ -402,6 +402,23 @@ export default function FolderBrowser({
         return
       }
 
+      if (!modifier && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && visibleEntries.length > 0) {
+        e.preventDefault()
+        const currentIndex = visibleEntries.findIndex((v) => selectedNames.has(v.name))
+        let nextIndex: number
+        if (currentIndex === -1) {
+          nextIndex = e.key === 'ArrowDown' ? 0 : visibleEntries.length - 1
+        } else if (e.key === 'ArrowDown') {
+          nextIndex = Math.min(currentIndex + 1, visibleEntries.length - 1)
+        } else {
+          nextIndex = Math.max(currentIndex - 1, 0)
+        }
+        const nextEntry = visibleEntries[nextIndex]
+        setSelectedNames(new Set([nextEntry.name]))
+        document.querySelector(`[data-entry-name="${CSS.escape(nextEntry.name)}"]`)?.scrollIntoView({ block: 'nearest' })
+        return
+      }
+
       const selected = visibleEntries.filter((v) => selectedNames.has(v.name))
 
       if (modifier && (e.key === 'c' || e.key === 'C') && selected.length > 0) {
@@ -648,6 +665,7 @@ export default function FolderBrowser({
           {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor }) => (
             <li
               key={entry.name}
+              data-entry-name={entry.name}
               className={[
                 'entry-card',
                 viewMode === 'tiles' ? 'entry-card-tile' : 'entry-card-stack',
@@ -704,6 +722,7 @@ export default function FolderBrowser({
           {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor }) => (
             <li
               key={entry.name}
+              data-entry-name={entry.name}
               className={[
                 'entry-flow-item',
                 meta?.hidden ? 'entry-hidden' : '',
@@ -781,7 +800,7 @@ export default function FolderBrowser({
           <div className="column-browser-col">
             <ul className="column-browser-list">
               {enrichedEntries.map(({ entry, kind, thumbUrl, icon, displayColor }) => (
-                <li key={entry.name}>
+                <li key={entry.name} data-entry-name={entry.name}>
                   <button
                     className={
                       columnFileSelection === entry.name ? 'column-browser-item selected' : 'column-browser-item'
@@ -846,6 +865,7 @@ export default function FolderBrowser({
           {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor, override }) => (
             <li
               key={entry.name}
+              data-entry-name={entry.name}
               className={[
                 'entry-item',
                 meta?.hidden ? 'entry-hidden' : '',
