@@ -3,6 +3,7 @@ import type { BrowseEntry, EntryMetadata, PasteMode, SortMode, ViewMode } from '
 import { joinRelPath, parentRelPath, pathSegments } from '../store'
 import { formatBytes, formatDate, hexToRgba } from '../utils/format'
 import { getPreviewKind } from '../utils/previewKind'
+import { splitFileName, fileTypeLabel } from '../utils/fileExtension'
 import { markInternalDragStart, markInternalDragEnd, isInternalDragActive } from '../utils/internalDrag'
 import { sortEntries } from '../utils/sortEntries'
 import InputDialog from './InputDialog'
@@ -378,7 +379,20 @@ export default function FolderBrowser({
         : null
     const icon = entry.isDirectory ? '📁' : kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : '📄'
     const displayColor = entry.finderTagColor ?? meta?.color ?? null
-    return { entry, meta, kind, thumbUrl, icon, displayColor, override: downloadFolderOverrides[entry.name] }
+    const { base: nameBase, ext: nameExt } = splitFileName(entry.name)
+    const typeLabel = fileTypeLabel(entry.name, entry.isDirectory)
+    return {
+      entry,
+      meta,
+      kind,
+      thumbUrl,
+      icon,
+      displayColor,
+      nameBase,
+      nameExt,
+      typeLabel,
+      override: downloadFolderOverrides[entry.name]
+    }
   })
 
   useEffect(() => {
@@ -669,6 +683,7 @@ export default function FolderBrowser({
               className={[
                 'entry-card',
                 viewMode === 'tiles' ? 'entry-card-tile' : 'entry-card-stack',
+                selectedNames.has(entry.name) ? 'entry-selected' : '',
                 meta?.hidden ? 'entry-hidden' : '',
                 dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
               ]
@@ -725,6 +740,7 @@ export default function FolderBrowser({
               data-entry-name={entry.name}
               className={[
                 'entry-flow-item',
+                selectedNames.has(entry.name) ? 'entry-selected' : '',
                 meta?.hidden ? 'entry-hidden' : '',
                 dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
               ]
@@ -862,12 +878,13 @@ export default function FolderBrowser({
         </div>
       ) : (
         <ul className="entry-list">
-          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor, override }) => (
+          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor, nameBase, nameExt, typeLabel, override }) => (
             <li
               key={entry.name}
               data-entry-name={entry.name}
               className={[
                 'entry-item',
+                selectedNames.has(entry.name) ? 'entry-selected' : '',
                 meta?.hidden ? 'entry-hidden' : '',
                 dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
               ]
@@ -907,7 +924,10 @@ export default function FolderBrowser({
                   disabled={!entry.isDirectory && !kind}
                 >
                   <span className="entry-icon">{icon}</span>
-                  <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>{entry.name}</span>
+                  <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>
+                    <span className="entry-name-base">{nameBase}</span>
+                    {nameExt && <span className="entry-name-ext">.{nameExt}</span>}
+                  </span>
                   {showMemoInline && meta?.memo && (
                     <span className="entry-memo-inline" title={meta.memo}>
                       {meta.memo}
@@ -923,6 +943,7 @@ export default function FolderBrowser({
                       📝
                     </span>
                   )}
+                  {viewMode === 'details' && <span className="entry-type">{typeLabel}</span>}
                   {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
                   {viewMode === 'content' && <span className="entry-date">{formatDate(entry.modifiedAt)}</span>}
                 </button>

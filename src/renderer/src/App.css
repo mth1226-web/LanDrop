@@ -340,6 +340,13 @@ body {
   background: #20202e;
 }
 
+.entry-item.entry-selected,
+.entry-card.entry-selected,
+.entry-flow-item.entry-selected {
+  box-shadow: inset 0 0 0 2px #5878e8;
+  background: rgba(88, 120, 232, 0.18);
+}
+
 .entry-row {
   display: flex;
   align-items: center;
@@ -403,10 +410,27 @@ body {
 
 .entry-name {
   flex: 1;
+  display: flex;
+  min-width: 30px;
   font-size: 13px;
+  white-space: nowrap;
+}
+
+.entry-name-base {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+}
+
+.entry-name-ext {
+  flex-shrink: 0;
+}
+
+.entry-type {
+  font-size: 11px;
+  color: #7a7a90;
+  flex-shrink: 0;
+  min-width: 120px;
 }
 
 .entry-memo-inline {
