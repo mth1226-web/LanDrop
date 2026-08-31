@@ -54,6 +54,9 @@ interface ColumnData {
   order: string[]
 }
 
+// nullは「この階層はまだ読み込み中」を表す(列の本数を常にパスの深さと一致させておくため)
+type ColumnSlot = ColumnData | null
+
 function viewFamily(mode: ViewMode): 'grid' | 'flow' | 'row' | 'columns' {
   if (mode === 'extraLargeIcons' || mode === 'largeIcons' || mode === 'mediumIcons' || mode === 'tiles') return 'grid'
   if (mode === 'smallIcons' || mode === 'list') return 'flow'
@@ -145,7 +148,7 @@ export default function FolderBrowser({
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [ancestorColumns, setAncestorColumns] = useState<ColumnData[]>([])
+  const [ancestorColumns, setAncestorColumns] = useState<ColumnSlot[]>([])
   const [columnsLoading, setColumnsLoading] = useState(false)
   const [isEditingPath, setIsEditingPath] = useState(false)
   const [pathInputValue, setPathInputValue] = useState('')
@@ -169,6 +172,9 @@ export default function FolderBrowser({
       setAncestorColumns([])
       return
     }
+    // 既に読み込み済みの階層はそのまま使い回し、新しく必要になった階層だけ読み込み中(null)にする。
+    // 列の本数を常にパスの深さと一致させておくことで、読み込み中に末尾の列が左にずれて見える不具合を防ぐ
+    setAncestorColumns((prev) => prefixes.map((p) => prev.find((c) => c?.path === p) ?? null))
     let cancelled = false
     setColumnsLoading(true)
     Promise.all(
@@ -862,31 +868,39 @@ export default function FolderBrowser({
           {ancestorColumns.map((col, i) => {
             const selectedName = segments[i]
             return (
-              <div className="column-browser-col" key={col.path || '(root)'} style={{ width: getColumnWidth(i) }}>
+              <div
+                className="column-browser-col"
+                key={col?.path ?? `loading-${i}`}
+                style={{ width: getColumnWidth(i) }}
+              >
                 <ul className="column-browser-list">
-                  {sortEntries(col.entries, sortMode, col.order).map((entry) => {
-                    const meta = col.metadata[entry.name]
-                    const displayColor = entry.finderTagColor ?? meta?.color ?? null
-                    const entryKind = entry.isDirectory ? null : getPreviewKind(entry.name)
-                    const entryIcon = entry.isDirectory ? '📁' : entryKind === 'image' ? '🖼️' : entryKind === 'video' ? '🎬' : '📄'
-                    return (
-                      <li key={entry.name}>
-                        <button
-                          className={
-                            entry.name === selectedName ? 'column-browser-item selected' : 'column-browser-item'
-                          }
-                          style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
-                          title="クリックで開く"
-                          onClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
-                          disabled={!entry.isDirectory}
-                        >
-                          <span className="column-browser-icon">{entryIcon}</span>
-                          <span className="column-browser-name">{entry.name}</span>
-                          {entry.isDirectory && <span className="column-browser-chevron">›</span>}
-                        </button>
-                      </li>
-                    )
-                  })}
+                  {col === null ? (
+                    <li className="column-browser-loading">読み込み中…</li>
+                  ) : (
+                    sortEntries(col.entries, sortMode, col.order).map((entry) => {
+                      const meta = col.metadata[entry.name]
+                      const displayColor = entry.finderTagColor ?? meta?.color ?? null
+                      const entryKind = entry.isDirectory ? null : getPreviewKind(entry.name)
+                      const entryIcon = entry.isDirectory ? '📁' : entryKind === 'image' ? '🖼️' : entryKind === 'video' ? '🎬' : '📄'
+                      return (
+                        <li key={entry.name}>
+                          <button
+                            className={
+                              entry.name === selectedName ? 'column-browser-item selected' : 'column-browser-item'
+                            }
+                            style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
+                            title="クリックで開く"
+                            onClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
+                            disabled={!entry.isDirectory}
+                          >
+                            <span className="column-browser-icon">{entryIcon}</span>
+                            <span className="column-browser-name">{entry.name}</span>
+                            {entry.isDirectory && <span className="column-browser-chevron">›</span>}
+                          </button>
+                        </li>
+                      )
+                    })
+                  )}
                 </ul>
                 <div
                   className="column-browser-resize-handle"
