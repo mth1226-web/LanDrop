@@ -409,6 +409,10 @@ export default function FolderBrowser({
   // カラム表示のプレビューパネル用: 1件だけ選択されていて、それがファイルの場合のみ対象にする
   const columnPreviewEntry =
     selectedEntries.length === 1 && !selectedEntries[0].isDirectory ? selectedEntries[0] : null
+  // カラム表示で何も選択していない時、末尾のプレビュー欄に今開いているフォルダ自体の情報を出すため
+  const currentFolderEntry = ancestorColumns[ancestorColumns.length - 1]?.entries.find(
+    (e) => e.name === segments[segments.length - 1]
+  )
 
   const family = viewFamily(viewMode)
   const enrichedEntries = visibleEntries.map((entry) => {
@@ -732,9 +736,9 @@ export default function FolderBrowser({
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && family !== 'columns' ? (
         <p className="empty-hint">読み込み中…</p>
-      ) : visibleEntries.length === 0 ? (
+      ) : visibleEntries.length === 0 && family !== 'columns' ? (
         <p className="empty-hint">
           {searchLower
             ? `「${searchQuery}」に一致する項目がありません`
@@ -887,6 +891,11 @@ export default function FolderBrowser({
           })}
           <div className="column-browser-col" style={{ width: getColumnWidth(ancestorColumns.length) }}>
             <ul className="column-browser-list">
+              {isLoading ? (
+                <li className="column-browser-loading">読み込み中…</li>
+              ) : enrichedEntries.length === 0 ? (
+                <li className="column-browser-empty">空のフォルダです</li>
+              ) : null}
               {enrichedEntries.map(({ entry, kind, thumbUrl, icon, displayColor }) => (
                 <li key={entry.name} data-entry-name={entry.name}>
                   <button
@@ -919,6 +928,16 @@ export default function FolderBrowser({
               onMouseDown={(e) => startColumnResize(ancestorColumns.length, ancestorColumns.length + 1, e)}
             />
           </div>
+          {!columnPreviewEntry && !isAtRoot && !isLoading && (
+            <div className="column-browser-preview">
+              <span className="column-browser-preview-icon">📁</span>
+              <div className="column-browser-preview-name">{segments[segments.length - 1]}</div>
+              <div className="column-browser-preview-meta">{enrichedEntries.length}項目</div>
+              {currentFolderEntry && (
+                <div className="column-browser-preview-meta">{formatDate(currentFolderEntry.modifiedAt)}</div>
+              )}
+            </div>
+          )}
           {columnPreviewEntry &&
             (() => {
               const selected = columnPreviewEntry

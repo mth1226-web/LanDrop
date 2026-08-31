@@ -769,7 +769,8 @@ body {
   opacity: 0.5;
 }
 
-.column-browser-loading {
+.column-browser-loading,
+.column-browser-empty {
   padding: 6px;
   font-size: 12px;
   color: #7a7a90;
