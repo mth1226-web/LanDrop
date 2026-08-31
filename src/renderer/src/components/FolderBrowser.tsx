@@ -798,8 +798,8 @@ export default function FolderBrowser({
                             entry.name === selectedName ? 'column-browser-item selected' : 'column-browser-item'
                           }
                           style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
-                          title="ダブルクリックで開く"
-                          onDoubleClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
+                          title="クリックで開く"
+                          onClick={() => entry.isDirectory && onNavigate(joinRelPath(col.path, entry.name))}
                           disabled={!entry.isDirectory}
                         >
                           <span className="column-browser-icon">{entryIcon}</span>
@@ -822,13 +822,13 @@ export default function FolderBrowser({
                       columnFileSelection === entry.name ? 'column-browser-item selected' : 'column-browser-item'
                     }
                     style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
-                    title="ダブルクリックで開く"
+                    title={entry.isDirectory ? 'クリックで開く' : 'ダブルクリックでプレビュー'}
                     onClick={() => {
-                      if (!entry.isDirectory) setColumnFileSelection(entry.name)
+                      if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                      else setColumnFileSelection(entry.name)
                     }}
                     onDoubleClick={() => {
-                      if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
-                      else if (kind) onPreviewEntry(entry)
+                      if (!entry.isDirectory && kind) onPreviewEntry(entry)
                     }}
                     onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
                   >
