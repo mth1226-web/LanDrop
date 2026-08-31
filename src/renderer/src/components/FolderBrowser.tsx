@@ -778,11 +778,14 @@ export default function FolderBrowser({
               <button
                 className="entry-card-main"
                 title="ダブルクリックで開く"
+                onClick={(e) => {
+                  if (e.ctrlKey || e.metaKey) toggleSelected(entry.name)
+                  else setSelectedNames(new Set([entry.name]))
+                }}
                 onDoubleClick={() => {
                   if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
                   else if (kind) onPreviewEntry(entry)
                 }}
-                disabled={!entry.isDirectory && !kind}
               >
                 <div className="entry-card-icon" style={{ ['--icon-size' as string]: `${GRID_ICON_SIZE[viewMode]}px` }}>
                   {thumbUrl ? (
@@ -835,11 +838,14 @@ export default function FolderBrowser({
               <button
                 className="entry-flow-main"
                 title="ダブルクリックで開く"
+                onClick={(e) => {
+                  if (e.ctrlKey || e.metaKey) toggleSelected(entry.name)
+                  else setSelectedNames(new Set([entry.name]))
+                }}
                 onDoubleClick={() => {
                   if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
                   else if (kind) onPreviewEntry(entry)
                 }}
-                disabled={!entry.isDirectory && !kind}
               >
                 <span className="entry-flow-icon">
                   {thumbUrl ? <img src={thumbUrl} alt="" loading="lazy" /> : icon}
@@ -1014,12 +1020,15 @@ export default function FolderBrowser({
                 <button
                   className="entry-main"
                   title="ダブルクリックで開く"
+                  onClick={(e) => {
+                    if (e.ctrlKey || e.metaKey) toggleSelected(entry.name)
+                    else setSelectedNames(new Set([entry.name]))
+                  }}
                   onDoubleClick={() => {
                     if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
                     else if (kind) onPreviewEntry(entry)
                   }}
-                  disabled={!entry.isDirectory && !kind}
-                >
+                  >
                   <span className="entry-icon">{icon}</span>
                   <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>
                     <span className="entry-name-base">{nameBase}</span>
