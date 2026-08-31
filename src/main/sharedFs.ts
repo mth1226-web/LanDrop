@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import archiver from 'archiver'
 import extractZip from 'extract-zip'
-import type { BrowseEntry } from '../shared/types'
+import type { BrowseEntry, SyncManifestEntry } from '../shared/types'
 import { resolveUniquePath } from './fileSave'
 import { readFinderTagColor, writeFinderTagColor } from './finderTags'
 
@@ -38,6 +38,38 @@ export function listDirectory(root: string, relPath: string): BrowseEntry[] {
     return a.name.localeCompare(b.name)
   })
   return entries
+}
+
+/**
+ * root配下(relPath起点)を再帰的に走査し、フォルダ同期の比較に使う一覧をフラットな配列で返す。
+ * シンボリックリンクはたどらない。相対パスは常に'/'区切りに正規化する(Windows対策)。
+ * ディレクトリ自身も1エントリとして含める(空フォルダをミラーで再現できるようにするため)。
+ */
+export function listDirectoryRecursive(root: string, relPath = ''): SyncManifestEntry[] {
+  const start = resolveSafePath(root, relPath)
+  if (!start) throw new Error('invalid path')
+  const results: SyncManifestEntry[] = []
+
+  function walk(absDir: string, relDir: string): void {
+    const names = fs.readdirSync(absDir, { withFileTypes: true })
+    for (const entry of names) {
+      if (entry.isSymbolicLink()) continue
+      const entryAbsPath = path.join(absDir, entry.name)
+      const entryRelPath = relDir ? `${relDir}/${entry.name}` : entry.name
+      const stat = fs.statSync(entryAbsPath)
+      const isDirectory = entry.isDirectory()
+      results.push({
+        relPath: entryRelPath,
+        isDirectory,
+        size: isDirectory ? 0 : stat.size,
+        modifiedAt: stat.mtimeMs
+      })
+      if (isDirectory) walk(entryAbsPath, entryRelPath)
+    }
+  }
+
+  walk(start, '')
+  return results
 }
 
 /** 指定したエントリのFinderカラータグを設定する(Mac以外では何もしない) */

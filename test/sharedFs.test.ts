@@ -6,6 +6,7 @@ import path from 'node:path'
 import {
   resolveSafePath,
   listDirectory,
+  listDirectoryRecursive,
   createFolder,
   renameEntry,
   isValidEntryName,
@@ -55,6 +56,51 @@ test('listDirectoryはフォルダを先頭にして名前順で返す', () => {
 test('listDirectoryは不正なパスに対して例外を投げる', () => {
   const root = makeRoot()
   assert.throws(() => listDirectory(root, '../outside'))
+})
+
+test('listDirectoryRecursiveはサブフォルダも含めてフラットに列挙する(相対パスは/区切り)', () => {
+  const root = makeRoot()
+  fs.mkdirSync(path.join(root, 'sub', 'deep'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'a.txt'), 'hello')
+  fs.writeFileSync(path.join(root, 'sub', 'b.txt'), 'world!')
+  fs.writeFileSync(path.join(root, 'sub', 'deep', 'c.txt'), 'x')
+
+  const entries = listDirectoryRecursive(root)
+  const byPath = new Map(entries.map((e) => [e.relPath, e]))
+
+  assert.equal(entries.length, 5)
+  assert.equal(byPath.get('a.txt')?.isDirectory, false)
+  assert.equal(byPath.get('a.txt')?.size, 5)
+  assert.equal(byPath.get('sub')?.isDirectory, true)
+  assert.equal(byPath.get('sub/b.txt')?.size, 6)
+  assert.equal(byPath.get('sub/deep')?.isDirectory, true)
+  assert.equal(byPath.get('sub/deep/c.txt')?.size, 1)
+})
+
+test('listDirectoryRecursiveは空フォルダもエントリとして含める', () => {
+  const root = makeRoot()
+  fs.mkdirSync(path.join(root, 'empty'))
+  const entries = listDirectoryRecursive(root)
+  assert.deepEqual(
+    entries.map((e) => e.relPath),
+    ['empty']
+  )
+})
+
+test('listDirectoryRecursiveはrelPathを起点にできる', () => {
+  const root = makeRoot()
+  fs.mkdirSync(path.join(root, 'sub'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'sub', 'inner.txt'), 'hi')
+  const entries = listDirectoryRecursive(root, 'sub')
+  assert.deepEqual(
+    entries.map((e) => e.relPath),
+    ['inner.txt']
+  )
+})
+
+test('listDirectoryRecursiveは不正なパスに対して例外を投げる', () => {
+  const root = makeRoot()
+  assert.throws(() => listDirectoryRecursive(root, '../outside'))
 })
 
 test('createFolderでサブフォルダを作成できる', () => {

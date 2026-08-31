@@ -113,6 +113,9 @@ export default function App(): JSX.Element {
           <button className="button secondary" onClick={() => void window.electronAPI.openPreviewWindow(null)}>
             プレビュー
           </button>
+          <button className="button secondary" onClick={() => void window.electronAPI.openSyncWindow()}>
+            フォルダ同期
+          </button>
           <button className="button secondary" onClick={() => void window.electronAPI.openChatWindow()}>
             チャット
           </button>

@@ -90,6 +90,66 @@ export interface TransferActivity {
   errorMessage?: string
 }
 
+/** フォルダ同期(片方向ミラー)用の1エントリ分の情報(再帰走査結果) */
+export interface SyncManifestEntry {
+  relPath: string
+  isDirectory: boolean
+  size: number
+  modifiedAt: number
+}
+
+/** フォルダ同期の比較対象1件分の一覧(ローカル/リモートどちらの側にも使う) */
+export interface SyncManifest {
+  rootKey: string
+  generatedAt: number
+  entries: SyncManifestEntry[]
+}
+
+export type SyncDirection = 'push' | 'pull'
+
+/** フォルダ同期ペアの設定(landrop-sync-pairs.jsonに永続化) */
+export interface SyncPair {
+  id: string
+  name: string
+  localFolder: string
+  remotePeerDeviceId: string
+  remoteFolder: string
+  mode: 'mirror'
+  direction: SyncDirection
+  compareBy: 'time-size'
+  useVersioning: boolean
+  versioningFolder?: string
+  lastSyncAt?: number
+}
+
+export type SyncAction = 'create' | 'update' | 'delete' | 'skip'
+
+/** 同期の差分1件(比較結果のプレビュー表示・実行の両方に使う) */
+export interface SyncDiffItem {
+  relPath: string
+  isDirectory: boolean
+  action: SyncAction
+  side: 'source' | 'target'
+  reason: string
+  sourceSize?: number
+  targetSize?: number
+}
+
+export interface SyncPlanSummary {
+  creates: number
+  updates: number
+  deletes: number
+  skips: number
+}
+
+/** sync-compareの戻り値(プレビュー用、この時点では何も変更しない) */
+export interface SyncPlan {
+  pairId: string
+  generatedAt: number
+  items: SyncDiffItem[]
+  summary: SyncPlanSummary
+}
+
 export type SortMode = 'name' | 'date' | 'manual'
 
 /** Windowsエクスプローラ相当の8種類 + Mac Finderのカラム表示 */

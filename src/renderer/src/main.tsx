@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import SettingsWindowApp from './windows/SettingsWindowApp'
+import SyncWindowApp from './windows/SyncWindowApp'
 import ChatWindowApp from './windows/ChatWindowApp'
 import UpdateWindowApp from './windows/UpdateWindowApp'
 import PreviewWindowApp from './windows/PreviewWindowApp'
@@ -15,6 +16,8 @@ function RootByRoute(): JSX.Element {
   switch (route) {
     case 'settings':
       return <SettingsWindowApp />
+    case 'sync':
+      return <SyncWindowApp />
     case 'chat':
       return <ChatWindowApp />
     case 'update':

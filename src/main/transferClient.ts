@@ -1,7 +1,7 @@
 // 共有フォルダ参照・アップロード/ダウンロード・フォルダ作成・リネームのHTTPクライアント（Electron非依存）
 import http from 'node:http'
 import fs from 'node:fs'
-import type { BrowseEntry, ChatMessage } from '../shared/types'
+import type { BrowseEntry, ChatMessage, SyncManifest } from '../shared/types'
 
 function getJson<T>(address: string, port: number, path: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -134,6 +134,11 @@ export function setFinderTagColorRemote(
   colorHex: string | null
 ): Promise<{ ok: boolean }> {
   return postJsonWithResponse(address, port, '/api/finder-tag', { path: relPath, name, colorHex })
+}
+
+/** 相手PC自身の共有フォルダ内の指定フォルダを再帰的に一覧してもらう(フォルダ同期の差分比較用) */
+export function getSyncManifestRemote(address: string, port: number, folder: string): Promise<SyncManifest> {
+  return getJson<SyncManifest>(address, port, `/api/sync/manifest?folder=${encodeURIComponent(folder)}`)
 }
 
 function postFile(params: {

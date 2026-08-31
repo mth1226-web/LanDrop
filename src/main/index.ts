@@ -72,7 +72,11 @@ import {
 import type { ChatStore } from './chatStore'
 import { sortOrderKey, loadSortOrderStore, saveSortOrderStore, getCustomOrder, setCustomOrder } from './sortOrderStore'
 import type { SortOrderStore } from './sortOrderStore'
-import type { AppSettings, BrowseEntry, ChatMessage, UpdateState, ViewMode } from '../shared/types'
+import { computePlan, buildLocalManifest, buildRemoteManifest, executePlan } from './syncEngine'
+import type { SyncSide } from './syncEngine'
+import { loadSyncPairStore, saveSyncPairStore, listSyncPairs, upsertSyncPair, deleteSyncPair } from './syncPairs'
+import type { SyncPairStore } from './syncPairs'
+import type { AppSettings, BrowseEntry, ChatMessage, SyncPair, UpdateState, ViewMode } from '../shared/types'
 
 // デスクトップショートカット等からフォルダパスを渡して起動された場合、二重起動せず既存インスタンスに委譲する
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
@@ -85,6 +89,7 @@ let settingsWindow: BrowserWindow | null = null
 let chatWindow: BrowserWindow | null = null
 let updateWindow: BrowserWindow | null = null
 let previewWindow: BrowserWindow | null = null
+let syncWindow: BrowserWindow | null = null
 let browseWindows: BrowserWindow[] = []
 let settings: AppSettings
 let httpServer: HttpServer | null = null
@@ -93,6 +98,7 @@ let ownHttpPort = 0
 let entryMetadataStore: EntryMetadataStore = {}
 let chatStore: ChatStore = { broadcast: [], direct: {} }
 let sortOrderStore: SortOrderStore = {}
+let syncPairsStore: SyncPairStore = {}
 
 const activityStore = new ActivityStore()
 
@@ -110,6 +116,10 @@ function getChatFilePath(): string {
 
 function getSortOrderFilePath(): string {
   return join(app.getPath('userData'), 'landrop-sort-order.json')
+}
+
+function getSyncPairsFilePath(): string {
+  return join(app.getPath('userData'), 'landrop-sync-pairs.json')
 }
 
 /** 開いている全ウィンドウ(メイン+設定/チャット/アップデート/プレビューの各子ウィンドウ)へ送る */
@@ -220,6 +230,23 @@ function openSettingsWindow(): void {
   })
   settingsWindow.on('closed', () => {
     settingsWindow = null
+  })
+}
+
+function openSyncWindow(): void {
+  if (syncWindow && !syncWindow.isDestroyed()) {
+    syncWindow.focus()
+    return
+  }
+  syncWindow = createWindow('sync', {
+    width: 720,
+    height: 640,
+    minWidth: 560,
+    minHeight: 480,
+    title: 'LanDrop - フォルダ同期'
+  })
+  syncWindow.on('closed', () => {
+    syncWindow = null
   })
 }
 
@@ -422,6 +449,45 @@ function resolveSelfSharedEntry(relPath: string): { rootPath: string; innerRelPa
   const resolved = resolveSharedEntry(settings.sharedFolders, relPath)
   if (!resolved) throw new Error('invalid-path')
   return resolved
+}
+
+/** フォルダ同期用: 自分の共有フォルダ内のrelPathを、そこを起点とする絶対パス1本に解決する */
+function resolveSelfSyncRoot(relPath: string): string {
+  const resolved = resolveSelfSharedEntry(relPath)
+  const abs = resolveSafePath(resolved.rootPath, resolved.innerRelPath)
+  if (!abs) throw new Error('invalid-path')
+  return abs
+}
+
+/** フォルダ同期用: pair.localFolder(絶対パス)側をSyncSideとして表現する */
+function resolveLocalSyncSide(pair: SyncPair): SyncSide {
+  return { local: { root: pair.localFolder }, remote: null }
+}
+
+/**
+ * フォルダ同期用: (peerDeviceId, relPath)をSyncSideとして解決する。
+ * peerDeviceIdが自分自身ならローカル直接fs、それ以外ならHTTP経由のリモートとして扱う
+ * (既存のfindPeerOrThrow/resolveSelfSharedEntryのself/remote分岐と同じ考え方)
+ */
+function resolveSyncSide(peerDeviceId: string, folder: string): SyncSide {
+  if (peerDeviceId === settings.deviceId) {
+    return { local: { root: resolveSelfSyncRoot(folder) }, remote: null }
+  }
+  const peer = findPeerOrThrow(peerDeviceId)
+  return { local: null, remote: { address: peer.address, port: peer.httpPort, folder } }
+}
+
+async function buildManifestForSide(side: SyncSide) {
+  if (side.local) return buildLocalManifest(side.local.root, '')
+  if (side.remote) return buildRemoteManifest(side.remote.address, side.remote.port, side.remote.folder)
+  throw new Error('invalid-side')
+}
+
+/** direction:'push'ならlocalがsource/remoteがtarget、'pull'ならその逆 */
+function resolveSyncSides(pair: SyncPair): { source: SyncSide; target: SyncSide } {
+  const localSide = resolveLocalSyncSide(pair)
+  const remoteSide = resolveSyncSide(pair.remotePeerDeviceId, pair.remoteFolder)
+  return pair.direction === 'push' ? { source: localSide, target: remoteSide } : { source: remoteSide, target: localSide }
 }
 
 /**
@@ -935,6 +1001,82 @@ function registerIpcHandlers(): void {
   ipcMain.handle('check-for-update', () => checkForUpdateAndNotify())
   ipcMain.handle('apply-update', () => applyUpdateAndNotify())
 
+  ipcMain.handle('sync-list-pairs', () => listSyncPairs(syncPairsStore))
+
+  ipcMain.handle('sync-save-pair', (_event, pair: SyncPair) => {
+    const finalPair: SyncPair = { ...pair, id: pair.id || randomUUID() }
+    syncPairsStore = upsertSyncPair(syncPairsStore, finalPair)
+    saveSyncPairStore(getSyncPairsFilePath(), syncPairsStore)
+    return listSyncPairs(syncPairsStore)
+  })
+
+  ipcMain.handle('sync-delete-pair', (_event, pairId: string) => {
+    syncPairsStore = deleteSyncPair(syncPairsStore, pairId)
+    saveSyncPairStore(getSyncPairsFilePath(), syncPairsStore)
+    return listSyncPairs(syncPairsStore)
+  })
+
+  ipcMain.handle('sync-choose-local-folder', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? syncWindow
+    if (!owner) return null
+    const result = await dialog.showOpenDialog(owner, { properties: ['openDirectory'] })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('sync-compare', async (_event, pairId: string) => {
+    const pair = syncPairsStore[pairId]
+    if (!pair) throw new Error('pair-not-found')
+    const { source, target } = resolveSyncSides(pair)
+    const [sourceManifest, targetManifest] = await Promise.all([buildManifestForSide(source), buildManifestForSide(target)])
+    return computePlan(sourceManifest, targetManifest, pair)
+  })
+
+  ipcMain.handle('sync-execute', async (_event, pairId: string) => {
+    const pair = syncPairsStore[pairId]
+    if (!pair) throw new Error('pair-not-found')
+    const { source, target } = resolveSyncSides(pair)
+    const [sourceManifest, targetManifest] = await Promise.all([buildManifestForSide(source), buildManifestForSide(target)])
+    const plan = computePlan(sourceManifest, targetManifest, pair)
+    const peerDeviceName =
+      pair.remotePeerDeviceId === settings.deviceId ? settings.deviceName : findPeerOrThrow(pair.remotePeerDeviceId).deviceName
+
+    const results = await executePlan({
+      plan,
+      pair,
+      source,
+      target,
+      trashLocalPath: (absPath) => shell.trashItem(absPath),
+      onItemStart: (item) => {
+        const id = randomUUID()
+        activityStore.create({
+          id,
+          direction: pair.direction === 'push' ? 'upload' : 'download',
+          peerDeviceId: pair.remotePeerDeviceId,
+          peerDeviceName,
+          fileName: item.relPath,
+          totalBytes: item.sourceSize ?? 0,
+          now: Date.now()
+        })
+        broadcastActivity(id)
+        return id
+      },
+      onProgress: (id, transferred) => {
+        activityStore.updateProgress(id, transferred)
+        broadcastActivity(id)
+      },
+      onItemDone: (id, ok, err) => {
+        if (ok) activityStore.complete(id)
+        else activityStore.fail(id, err ?? 'unknown error')
+        broadcastActivity(id)
+      }
+    })
+
+    syncPairsStore = upsertSyncPair(syncPairsStore, { ...pair, lastSyncAt: Date.now() })
+    saveSyncPairStore(getSyncPairsFilePath(), syncPairsStore)
+    return results
+  })
+
   // アドレスバー表示用。自分の共有フォルダのみ実際の絶対パスを解決できる(相手PCの実パスは分からないためnull)
   ipcMain.handle('resolve-absolute-path', (_event, args: { peerDeviceId: string; relPath: string }) => {
     if (args.peerDeviceId !== settings.deviceId || !args.relPath) return null
@@ -1051,6 +1193,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('open-settings-window', () => openSettingsWindow())
+  ipcMain.handle('open-sync-window', () => openSyncWindow())
   ipcMain.handle('open-chat-window', () => openChatWindow())
   ipcMain.handle('open-update-window', () => openUpdateWindow())
   ipcMain.handle('open-preview-window', (_event, source: { url: string; name: string } | null) =>
@@ -1238,6 +1381,7 @@ app.whenReady().then(async () => {
   entryMetadataStore = loadEntryMetadataStore(getEntryMetadataFilePath())
   chatStore = loadChatStore(getChatFilePath())
   sortOrderStore = loadSortOrderStore(getSortOrderFilePath())
+  syncPairsStore = loadSyncPairStore(getSyncPairsFilePath())
   mainWindow = createWindow('')
   registerIpcHandlers()
   await startNetworking()

@@ -9,6 +9,8 @@ import type {
   Peer,
   PreviewSource,
   SortMode,
+  SyncPair,
+  SyncPlan,
   TransferActivity,
   UpdateState,
   ViewMode
@@ -58,7 +60,16 @@ export interface ElectronAPI {
 
   checkForUpdate: () => Promise<void>
   applyUpdate: () => Promise<void>
+
+  syncListPairs: () => Promise<SyncPair[]>
+  syncSavePair: (pair: SyncPair) => Promise<SyncPair[]>
+  syncDeletePair: (pairId: string) => Promise<SyncPair[]>
+  syncChooseLocalFolder: () => Promise<string | null>
+  syncCompare: (pairId: string) => Promise<SyncPlan>
+  syncExecute: (pairId: string) => Promise<EntryOpResult[]>
+
   openSettingsWindow: () => Promise<void>
+  openSyncWindow: () => Promise<void>
   openChatWindow: () => Promise<void>
   openUpdateWindow: () => Promise<void>
   openPreviewWindow: (source: PreviewSource | null) => Promise<void>

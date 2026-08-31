@@ -1358,3 +1358,168 @@ body {
   word-break: break-all;
   text-align: left;
 }
+
+/* ===== フォルダ同期(片方向ミラー) ===== */
+.sync-dialog {
+  width: 640px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.sync-hint {
+  font-size: 12px;
+  color: #a0a0b8;
+  margin: 0 0 12px;
+}
+
+.sync-pair-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sync-pair-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #2a2a38;
+  border-radius: 8px;
+  background: #14141c;
+}
+
+.sync-pair-info {
+  min-width: 0;
+}
+
+.sync-pair-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sync-pair-detail {
+  font-size: 11px;
+  color: #a0a0b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-pair-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sync-pair-form {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #2a2a38;
+  border-radius: 8px;
+  background: #14141c;
+}
+
+.sync-pair-form h3 {
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.sync-remote-picker {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid #2a2a38;
+  border-radius: 6px;
+  background: #1c1c28;
+}
+
+.sync-remote-path {
+  font-size: 12px;
+  color: #cfd0ea;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.sync-remote-entry-list {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sync-plan {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #2a2a38;
+  border-radius: 8px;
+  background: #14141c;
+}
+
+.sync-plan h3 {
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.sync-plan-summary {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: #cfd0ea;
+  margin-bottom: 10px;
+}
+
+.sync-plan-delete-count {
+  color: #ff8a80;
+  font-weight: 600;
+}
+
+.sync-plan-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sync-plan-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.sync-plan-item.danger {
+  background: rgba(255, 90, 90, 0.15);
+  color: #ff9a9a;
+}
+
+.sync-plan-item-action {
+  flex-shrink: 0;
+  width: 36px;
+  font-weight: 600;
+}
+
+.sync-plan-item-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-plan-item-size {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #7a7a90;
+}

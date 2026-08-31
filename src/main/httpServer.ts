@@ -19,7 +19,8 @@ import {
   moveEntry,
   compressEntries,
   extractZipEntry,
-  setEntryFinderTagColor
+  setEntryFinderTagColor,
+  listDirectoryRecursive
 } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
 import { renderWebUiHtml } from './webUi'
@@ -87,6 +88,7 @@ export class HttpServer extends EventEmitter {
         return this.handleWebUi(res)
       }
       if (req.method === 'GET' && url.pathname === '/api/browse') return this.handleBrowse(res, url)
+      if (req.method === 'GET' && url.pathname === '/api/sync/manifest') return this.handleSyncManifest(res, url)
       if (req.method === 'GET' && url.pathname === '/api/download') return this.handleDownload(res, url)
       if (req.method === 'GET' && url.pathname === '/api/download-zip') return this.handleDownloadZip(res, url)
       if (req.method === 'POST' && url.pathname === '/api/upload') return void this.handleUpload(req, res, url)
@@ -152,6 +154,22 @@ export class HttpServer extends EventEmitter {
       return
     }
     this.sendJson(res, 200, { ok: true, entries })
+  }
+
+  /** フォルダ同期の差分比較用: 指定した共有フォルダ配下を再帰的に一覧してSyncManifestとして返す */
+  private handleSyncManifest(res: http.ServerResponse, url: URL): void {
+    const folder = url.searchParams.get('folder') ?? ''
+    const resolved = resolveSharedEntry(this.getSharedFolders(), folder)
+    if (!resolved) {
+      this.sendJson(res, 400, { ok: false, error: 'invalid-folder' })
+      return
+    }
+    try {
+      const entries = listDirectoryRecursive(resolved.rootPath, resolved.innerRelPath)
+      this.sendJson(res, 200, { rootKey: `remote:${folder}`, generatedAt: Date.now(), entries })
+    } catch (err) {
+      this.sendJson(res, 400, { ok: false, error: String(err) })
+    }
   }
 
   private handleDownload(res: http.ServerResponse, url: URL): void {

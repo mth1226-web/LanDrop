@@ -10,6 +10,8 @@ import type {
   Peer,
   PreviewSource,
   SortMode,
+  SyncPair,
+  SyncPlan,
   TransferActivity,
   UpdateState,
   ViewMode
@@ -74,7 +76,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdate: (): Promise<void> => ipcRenderer.invoke('check-for-update'),
   applyUpdate: (): Promise<void> => ipcRenderer.invoke('apply-update'),
 
+  syncListPairs: (): Promise<SyncPair[]> => ipcRenderer.invoke('sync-list-pairs'),
+  syncSavePair: (pair: SyncPair): Promise<SyncPair[]> => ipcRenderer.invoke('sync-save-pair', pair),
+  syncDeletePair: (pairId: string): Promise<SyncPair[]> => ipcRenderer.invoke('sync-delete-pair', pairId),
+  syncChooseLocalFolder: (): Promise<string | null> => ipcRenderer.invoke('sync-choose-local-folder'),
+  syncCompare: (pairId: string): Promise<SyncPlan> => ipcRenderer.invoke('sync-compare', pairId),
+  syncExecute: (pairId: string): Promise<EntryOpResult[]> => ipcRenderer.invoke('sync-execute', pairId),
+
   openSettingsWindow: (): Promise<void> => ipcRenderer.invoke('open-settings-window'),
+  openSyncWindow: (): Promise<void> => ipcRenderer.invoke('open-sync-window'),
   openChatWindow: (): Promise<void> => ipcRenderer.invoke('open-chat-window'),
   openUpdateWindow: (): Promise<void> => ipcRenderer.invoke('open-update-window'),
   openPreviewWindow: (source: PreviewSource | null): Promise<void> => ipcRenderer.invoke('open-preview-window', source),
