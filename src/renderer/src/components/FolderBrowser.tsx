@@ -152,6 +152,8 @@ export default function FolderBrowser({
   const pathInputRef = useRef<HTMLInputElement>(null)
   // カラム表示で左矢印キーにより親へ戻った直後、元いたフォルダを新しい列で選択状態にしておくため
   const pendingSelectionRef = useRef<string | null>(null)
+  // カラム表示の各列の幅(列のインデックス -> px)。未設定の列はデフォルト幅を使う
+  const [columnWidths, setColumnWidths] = useState<Record<number, number>>({})
 
   const segments = pathSegments(currentPath)
   const isAtRoot = currentPath === ''
@@ -192,6 +194,38 @@ export default function FolderBrowser({
     setSelectedNames(pending ? new Set([pending]) : new Set())
     setSearchQuery('')
   }, [currentPath])
+
+  const DEFAULT_COLUMN_WIDTH = 200
+
+  function getColumnWidth(index: number): number {
+    return columnWidths[index] ?? DEFAULT_COLUMN_WIDTH
+  }
+
+  /** カラム表示の列境界をドラッグして幅を変える。optionキーを押しながらだと全列を同じ幅にする(Mac Finder風) */
+  function startColumnResize(index: number, totalColumns: number, e: React.MouseEvent): void {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = getColumnWidth(index)
+
+    function handleMouseMove(moveEvent: MouseEvent): void {
+      const newWidth = Math.max(120, Math.min(500, startWidth + (moveEvent.clientX - startX)))
+      if (moveEvent.altKey) {
+        const next: Record<number, number> = {}
+        for (let i = 0; i < totalColumns; i++) next[i] = newWidth
+        setColumnWidths(next)
+      } else {
+        setColumnWidths((prev) => ({ ...prev, [index]: newWidth }))
+      }
+    }
+
+    function handleMouseUp(): void {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
 
   function toggleSelected(name: string): void {
     setSelectedNames((prev) => {
@@ -468,6 +502,18 @@ export default function FolderBrowser({
       if (e.key === 'Delete' && selected.length > 0) {
         e.preventDefault()
         onTrashEntries(selected.map((v) => v.name))
+        return
+      }
+
+      if (
+        !modifier &&
+        e.key === ' ' &&
+        selected.length === 1 &&
+        !selected[0].isDirectory &&
+        getPreviewKind(selected[0].name)
+      ) {
+        e.preventDefault()
+        onPreviewEntry(selected[0])
         return
       }
 
@@ -804,7 +850,7 @@ export default function FolderBrowser({
           {ancestorColumns.map((col, i) => {
             const selectedName = segments[i]
             return (
-              <div className="column-browser-col" key={col.path || '(root)'}>
+              <div className="column-browser-col" key={col.path || '(root)'} style={{ width: getColumnWidth(i) }}>
                 <ul className="column-browser-list">
                   {sortEntries(col.entries, sortMode, []).map((entry) => {
                     const meta = col.metadata[entry.name]
@@ -830,10 +876,14 @@ export default function FolderBrowser({
                     )
                   })}
                 </ul>
+                <div
+                  className="column-browser-resize-handle"
+                  onMouseDown={(e) => startColumnResize(i, ancestorColumns.length + 1, e)}
+                />
               </div>
             )
           })}
-          <div className="column-browser-col">
+          <div className="column-browser-col" style={{ width: getColumnWidth(ancestorColumns.length) }}>
             <ul className="column-browser-list">
               {enrichedEntries.map(({ entry, kind, thumbUrl, icon, displayColor }) => (
                 <li key={entry.name} data-entry-name={entry.name}>
@@ -862,6 +912,10 @@ export default function FolderBrowser({
               ))}
               {columnsLoading && <li className="column-browser-loading">読み込み中…</li>}
             </ul>
+            <div
+              className="column-browser-resize-handle"
+              onMouseDown={(e) => startColumnResize(ancestorColumns.length, ancestorColumns.length + 1, e)}
+            />
           </div>
           {columnPreviewEntry &&
             (() => {
@@ -880,6 +934,9 @@ export default function FolderBrowser({
                     <span className="column-browser-preview-icon">📄</span>
                   )}
                   <div className="column-browser-preview-name">{selected.name}</div>
+                  <div className="column-browser-preview-meta">
+                    {fileTypeLabel(selected.name, selected.isDirectory)}
+                  </div>
                   <div className="column-browser-preview-meta">
                     {formatBytes(selected.size)} ・ {formatDate(selected.modifiedAt)}
                   </div>

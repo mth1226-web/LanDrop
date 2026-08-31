@@ -682,8 +682,8 @@ body {
 }
 
 .column-browser-col {
+  position: relative;
   flex-shrink: 0;
-  width: 200px;
   min-height: 0;
   overflow-y: auto;
   border-right: 1px solid #2a2a38;
@@ -694,6 +694,20 @@ body {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.column-browser-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.column-browser-resize-handle:hover {
+  background: #5878e8;
 }
 
 .column-browser-item {
