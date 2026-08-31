@@ -51,6 +51,7 @@ interface ColumnData {
   path: string
   entries: BrowseEntry[]
   metadata: Record<string, EntryMetadata>
+  order: string[]
 }
 
 function viewFamily(mode: ViewMode): 'grid' | 'flow' | 'row' | 'columns' {
@@ -174,7 +175,8 @@ export default function FolderBrowser({
       prefixes.map(async (p) => {
         const list = await window.electronAPI.browseFolder(peerDeviceId, p)
         const meta = await window.electronAPI.getEntryMetadataForChildren(peerDeviceId, p, list.map((e) => e.name))
-        return { path: p, entries: list, metadata: meta }
+        const order = await window.electronAPI.getCustomOrder(peerDeviceId, p)
+        return { path: p, entries: list, metadata: meta, order }
       })
     )
       .then((results) => {
@@ -852,7 +854,7 @@ export default function FolderBrowser({
             return (
               <div className="column-browser-col" key={col.path || '(root)'} style={{ width: getColumnWidth(i) }}>
                 <ul className="column-browser-list">
-                  {sortEntries(col.entries, sortMode, []).map((entry) => {
+                  {sortEntries(col.entries, sortMode, col.order).map((entry) => {
                     const meta = col.metadata[entry.name]
                     const displayColor = entry.finderTagColor ?? meta?.color ?? null
                     const entryKind = entry.isDirectory ? null : getPreviewKind(entry.name)
