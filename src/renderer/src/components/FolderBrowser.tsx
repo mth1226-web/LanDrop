@@ -150,6 +150,8 @@ export default function FolderBrowser({
   const [pathInputValue, setPathInputValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pathInputRef = useRef<HTMLInputElement>(null)
+  // カラム表示で左矢印キーにより親へ戻った直後、元いたフォルダを新しい列で選択状態にしておくため
+  const pendingSelectionRef = useRef<string | null>(null)
 
   const segments = pathSegments(currentPath)
   const isAtRoot = currentPath === ''
@@ -185,7 +187,9 @@ export default function FolderBrowser({
   }, [viewMode, currentPath, peerDeviceId])
 
   useEffect(() => {
-    setSelectedNames(new Set())
+    const pending = pendingSelectionRef.current
+    pendingSelectionRef.current = null
+    setSelectedNames(pending ? new Set([pending]) : new Set())
     setSearchQuery('')
   }, [currentPath])
 
@@ -417,6 +421,13 @@ export default function FolderBrowser({
         return
       }
 
+      if (!modifier && e.key === 'ArrowLeft' && family === 'columns' && !isAtRoot) {
+        e.preventDefault()
+        pendingSelectionRef.current = segments[segments.length - 1] ?? null
+        onNavigate(parentRelPath(currentPath))
+        return
+      }
+
       if (!modifier && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && visibleEntries.length > 0) {
         e.preventDefault()
         const currentIndex = visibleEntries.findIndex((v) => selectedNames.has(v.name))
@@ -466,6 +477,12 @@ export default function FolderBrowser({
         return
       }
 
+      if (!modifier && e.key === 'ArrowRight' && family === 'columns' && selected.length === 1 && selected[0].isDirectory) {
+        e.preventDefault()
+        onNavigate(joinRelPath(currentPath, selected[0].name))
+        return
+      }
+
       if (e.key === 'Enter' && selected.length === 1) {
         e.preventDefault()
         const only = selected[0]
@@ -486,7 +503,9 @@ export default function FolderBrowser({
     onCutEntries,
     onPasteEntries,
     onTrashEntries,
-    onPreviewEntry
+    onPreviewEntry,
+    family,
+    segments
   ])
 
   const selfStyle: React.CSSProperties =
