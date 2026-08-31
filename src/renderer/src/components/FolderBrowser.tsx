@@ -146,7 +146,6 @@ export default function FolderBrowser({
   const [searchQuery, setSearchQuery] = useState('')
   const [ancestorColumns, setAncestorColumns] = useState<ColumnData[]>([])
   const [columnsLoading, setColumnsLoading] = useState(false)
-  const [columnFileSelection, setColumnFileSelection] = useState<string | null>(null)
   const [isEditingPath, setIsEditingPath] = useState(false)
   const [pathInputValue, setPathInputValue] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -159,7 +158,6 @@ export default function FolderBrowser({
   // 祖先の各階層は自前で取得してカラムとして並べる必要がある(親コンポーネントは現在地の分しか持っていないため)
   useEffect(() => {
     if (viewMode !== 'columns') return
-    setColumnFileSelection(null)
     const segs = pathSegments(currentPath)
     const prefixes = segs.map((_, i) => segs.slice(0, i).join('/'))
     if (prefixes.length === 0) {
@@ -368,6 +366,9 @@ export default function FolderBrowser({
     (e) => (showHidden || !metadata[e.name]?.hidden) && (!searchLower || e.name.toLowerCase().includes(searchLower))
   )
   const selectedEntries = visibleEntries.filter((e) => selectedNames.has(e.name))
+  // カラム表示のプレビューパネル用: 1件だけ選択されていて、それがファイルの場合のみ対象にする
+  const columnPreviewEntry =
+    selectedEntries.length === 1 && !selectedEntries[0].isDirectory ? selectedEntries[0] : null
 
   const family = viewFamily(viewMode)
   const enrichedEntries = visibleEntries.map((entry) => {
@@ -819,13 +820,13 @@ export default function FolderBrowser({
                 <li key={entry.name} data-entry-name={entry.name}>
                   <button
                     className={
-                      columnFileSelection === entry.name ? 'column-browser-item selected' : 'column-browser-item'
+                      selectedNames.has(entry.name) ? 'column-browser-item selected' : 'column-browser-item'
                     }
                     style={displayColor ? { backgroundColor: hexToRgba(displayColor, 0.18) } : undefined}
                     title={entry.isDirectory ? 'クリックで開く' : 'ダブルクリックでプレビュー'}
                     onClick={() => {
                       if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
-                      else setColumnFileSelection(entry.name)
+                      else setSelectedNames(new Set([entry.name]))
                     }}
                     onDoubleClick={() => {
                       if (!entry.isDirectory && kind) onPreviewEntry(entry)
@@ -843,15 +844,14 @@ export default function FolderBrowser({
               {columnsLoading && <li className="column-browser-loading">読み込み中…</li>}
             </ul>
           </div>
-          {columnFileSelection &&
+          {columnPreviewEntry &&
             (() => {
-              const selected = entries.find((e) => e.name === columnFileSelection)
-              if (!selected) return null
-              const selectedMeta = metadata[columnFileSelection]
-              const selectedKind = getPreviewKind(columnFileSelection)
+              const selected = columnPreviewEntry
+              const selectedMeta = metadata[selected.name]
+              const selectedKind = getPreviewKind(selected.name)
               const thumbSrc =
                 previewBaseUrl && selectedKind === 'image'
-                  ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, columnFileSelection))}&inline=1`
+                  ? `${previewBaseUrl}/api/download?path=${encodeURIComponent(joinRelPath(currentPath, selected.name))}&inline=1`
                   : null
               return (
                 <div className="column-browser-preview">
@@ -860,7 +860,7 @@ export default function FolderBrowser({
                   ) : (
                     <span className="column-browser-preview-icon">📄</span>
                   )}
-                  <div className="column-browser-preview-name">{columnFileSelection}</div>
+                  <div className="column-browser-preview-name">{selected.name}</div>
                   <div className="column-browser-preview-meta">
                     {formatBytes(selected.size)} ・ {formatDate(selected.modifiedAt)}
                   </div>
