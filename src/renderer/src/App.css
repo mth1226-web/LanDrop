@@ -730,8 +730,10 @@ body {
 }
 
 .column-browser-item.selected {
-  background: #5878e8;
-  color: #ffffff;
+  /* 色タグ付きの項目はbackgroundColorをインラインstyleで指定しているため、
+     背景色だけだとそちらに上書きされて見えなくなる。box-shadowなら常に重なって見える */
+  box-shadow: inset 0 0 0 2px #5878e8;
+  background: rgba(88, 120, 232, 0.35);
 }
 
 .column-browser-item:disabled {
