@@ -212,11 +212,9 @@ body {
 
 .folder-browser-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 12px;
-  flex-wrap: wrap;
 }
 
 .breadcrumb-row {
