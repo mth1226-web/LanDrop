@@ -934,6 +934,12 @@ body {
   color: #ffffff;
 }
 
+.button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

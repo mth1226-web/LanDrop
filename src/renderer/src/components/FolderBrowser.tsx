@@ -685,33 +685,33 @@ export default function FolderBrowser({
           >
             {showThumbnails ? 'プレビューを隠す' : 'プレビューを表示'}
           </button>
-          {!isSelf && selectedEntries.length > 0 && (
-            <button className="button primary" onClick={() => onDownload(selectedEntries)}>
-              選択した{selectedEntries.length}件をダウンロード
+          {/* 選択操作系のボタンは常に表示・固定ラベルにし、未選択時はdisabledにする。
+              選択件数をラベルに含めると文字幅の変化でメニューの折り返しがガタつくため、件数は出さない */}
+          {!isSelf && (
+            <button className="button primary" onClick={() => onDownload(selectedEntries)} disabled={selectedEntries.length === 0}>
+              ダウンロード
             </button>
           )}
-          {selectedEntries.length > 0 && (
-            <>
-              <button className="button secondary" onClick={() => onCopyEntries(selectedEntries)}>
-                コピー（{selectedEntries.length}）
-              </button>
-              <button className="button secondary" onClick={() => onCutEntries(selectedEntries)}>
-                切り取り（{selectedEntries.length}）
-              </button>
-              <button
-                className="button secondary"
-                onClick={() => onCompressEntries(selectedEntries.map((v) => v.name))}
-              >
-                圧縮 (ZIP)（{selectedEntries.length}）
-              </button>
-              <button
-                className="button secondary"
-                onClick={() => onTrashEntries(selectedEntries.map((v) => v.name))}
-              >
-                ごみ箱へ（{selectedEntries.length}）
-              </button>
-            </>
-          )}
+          <button className="button secondary" onClick={() => onCopyEntries(selectedEntries)} disabled={selectedEntries.length === 0}>
+            コピー
+          </button>
+          <button className="button secondary" onClick={() => onCutEntries(selectedEntries)} disabled={selectedEntries.length === 0}>
+            切り取り
+          </button>
+          <button
+            className="button secondary"
+            onClick={() => onCompressEntries(selectedEntries.map((v) => v.name))}
+            disabled={selectedEntries.length === 0}
+          >
+            圧縮 (ZIP)
+          </button>
+          <button
+            className="button secondary"
+            onClick={() => onTrashEntries(selectedEntries.map((v) => v.name))}
+            disabled={selectedEntries.length === 0}
+          >
+            ごみ箱へ
+          </button>
           {clipboard && !isAtRoot && (
             <button
               className="button secondary"
