@@ -58,7 +58,9 @@ export class HttpServer extends EventEmitter {
     this.getSharedFolders = options.getSharedFolders
     this.getDeviceName = options.getDeviceName
     this.trashPath = options.trashPath
-    this.server = http.createServer((req, res) => this.handleRequest(req, res))
+    // requestTimeout(既定5分)は「リクエスト全体を受け終えるまでの上限」で、超えると408を返して接続を切る。
+    // 大きなファイル/フォルダのアップロードは5分以上かかりうるため無効化する(信頼できるLAN内での利用が前提)
+    this.server = http.createServer({ requestTimeout: 0 }, (req, res) => this.handleRequest(req, res))
   }
 
   /** listen(0)でOSにポートを割り当てさせ、実ポート番号を返す */
