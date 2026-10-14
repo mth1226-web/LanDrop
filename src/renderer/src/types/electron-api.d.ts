@@ -2,8 +2,11 @@ import type {
   AppSettings,
   BrowseEntry,
   ChatMessage,
+  DuplicateScanProgress,
+  DuplicateScanResult,
   EntryMetadata,
   EntryOpResult,
+  MediaInfo,
   NetworkInterfaceOption,
   PasteMode,
   Peer,
@@ -70,6 +73,7 @@ export interface ElectronAPI {
 
   openSettingsWindow: () => Promise<void>
   openSyncWindow: () => Promise<void>
+  openDuplicateFinderWindow: () => Promise<void>
   openChatWindow: () => Promise<void>
   openUpdateWindow: () => Promise<void>
   openPreviewWindow: (source: PreviewSource | null) => Promise<void>
@@ -81,6 +85,12 @@ export interface ElectronAPI {
   getLanUrl: () => Promise<string | null>
   resolveAbsolutePath: (peerDeviceId: string, relPath: string) => Promise<string | null>
   getOwnPreviewBaseUrl: () => Promise<string | null>
+  getMediaInfo: (peerDeviceId: string, relPath: string) => Promise<MediaInfo | null>
+  chooseDuplicateScanFolder: () => Promise<string[] | null>
+  startDuplicateScan: (rootPaths: string[]) => Promise<string>
+  cancelDuplicateScan: (scanId: string) => Promise<void>
+  revealPathInExplorer: (absPath: string) => Promise<void>
+  trashPath: (absPath: string) => Promise<{ ok: boolean; error?: string }>
   listNetworkInterfaces: () => Promise<NetworkInterfaceOption[]>
   setPreferredNetworkInterface: (name: string | null) => Promise<AppSettings>
   openNetworkSettings: () => Promise<void>
@@ -109,6 +119,9 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
   onPreviewSource: (callback: (source: PreviewSource) => void) => () => void
   onOpenFolderPath: (callback: (relPath: string) => void) => () => void
+  onDuplicateScanProgress: (callback: (payload: { scanId: string } & DuplicateScanProgress) => void) => () => void
+  onDuplicateScanResult: (callback: (payload: { scanId: string } & DuplicateScanResult) => void) => () => void
+  onDuplicateScanError: (callback: (payload: { scanId: string; message: string }) => void) => () => void
 }
 
 declare global {

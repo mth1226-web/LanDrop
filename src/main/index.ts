@@ -47,6 +47,8 @@ import {
   setEntryFinderTagColor
 } from './sharedFs'
 import { resolveUniquePath } from './fileSave'
+import { probeMediaInfo } from './mediaInfo'
+import { scanForDuplicates } from './duplicateFinder'
 import { checkForUpdate, downloadAndApplyUpdate } from './updater'
 import { getLanAddress, getLanInterfaces } from './localNetwork'
 import {
@@ -90,7 +92,10 @@ let chatWindow: BrowserWindow | null = null
 let updateWindow: BrowserWindow | null = null
 let previewWindow: BrowserWindow | null = null
 let syncWindow: BrowserWindow | null = null
+let duplicateFinderWindow: BrowserWindow | null = null
 let browseWindows: BrowserWindow[] = []
+/** 実行中の重複検索(scanId -> キャンセルフラグ) */
+const activeDuplicateScans = new Map<string, { cancelled: boolean }>()
 let settings: AppSettings
 let httpServer: HttpServer | null = null
 let discovery: Discovery | null = null
@@ -120,6 +125,21 @@ function getSortOrderFilePath(): string {
 
 function getSyncPairsFilePath(): string {
   return join(app.getPath('userData'), 'landrop-sync-pairs.json')
+}
+
+/**
+ * ファイルをエクスプローラー(Finder)で選択表示する。Windowsのshell.showItemInFolder()は同期的にOS呼び出しを
+ * 待つ実装になっており、対象がクラウド同期ドライブ(Google Drive等)上のフォルダだと列挙に時間がかかって
+ * メインプロセスの他のIPC処理まで巻き込んで固まることがある。explorer.exeを直接起動すれば非同期で済む
+ */
+function revealInFileManager(absPath: string): void {
+  if (process.platform === 'win32') {
+    execFile('explorer.exe', ['/select,', absPath], () => {
+      // explorer.exeは正常時でも0以外の終了コードを返すことがあるため、エラーは無視する
+    })
+  } else {
+    shell.showItemInFolder(absPath)
+  }
 }
 
 /** 開いている全ウィンドウ(メイン+設定/チャット/アップデート/プレビューの各子ウィンドウ)へ送る */
@@ -247,6 +267,23 @@ function openSyncWindow(): void {
   })
   syncWindow.on('closed', () => {
     syncWindow = null
+  })
+}
+
+function openDuplicateFinderWindow(): void {
+  if (duplicateFinderWindow && !duplicateFinderWindow.isDestroyed()) {
+    duplicateFinderWindow.focus()
+    return
+  }
+  duplicateFinderWindow = createWindow('duplicates', {
+    width: 820,
+    height: 680,
+    minWidth: 600,
+    minHeight: 480,
+    title: 'LanDrop - 重複チェック'
+  })
+  duplicateFinderWindow.on('closed', () => {
+    duplicateFinderWindow = null
   })
 }
 
@@ -768,7 +805,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('reveal-local-file', (_event, args: { relPath: string }) => {
     const resolved = resolveSharedEntry(settings.sharedFolders, args.relPath)
     const target = resolved ? resolveSafePath(resolved.rootPath, resolved.innerRelPath) : null
-    if (target) shell.showItemInFolder(target)
+    if (target) revealInFileManager(target)
   })
 
   ipcMain.handle(
@@ -1085,6 +1122,65 @@ function registerIpcHandlers(): void {
     return resolveSafePath(resolved.rootPath, resolved.innerRelPath)
   })
 
+  // 詳細モードの映像/音声情報欄用。自分の共有フォルダのファイルのみ解析できる(相手PCのファイルはローカルに実体が無いため)
+  ipcMain.handle('get-media-info', async (_event, args: { peerDeviceId: string; relPath: string }) => {
+    if (args.peerDeviceId !== settings.deviceId) return null
+    const resolved = resolveSharedEntry(settings.sharedFolders, args.relPath)
+    if (!resolved) return null
+    const absolutePath = resolveSafePath(resolved.rootPath, resolved.innerRelPath)
+    if (!absolutePath) return null
+    return probeMediaInfo(absolutePath, basename(absolutePath))
+  })
+
+  // 重複チェック機能: 共有フォルダに限らず、PC上の任意のフォルダ(SSD丸ごと等)を対象にできる
+  ipcMain.handle('choose-duplicate-scan-folder', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? duplicateFinderWindow
+    if (!owner) return null
+    const result = await dialog.showOpenDialog(owner, { properties: ['openDirectory', 'multiSelections'] })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths
+  })
+
+  ipcMain.handle('start-duplicate-scan', (_event, args: { rootPaths: string[] }) => {
+    const scanId = randomUUID()
+    const token = { cancelled: false }
+    activeDuplicateScans.set(scanId, token)
+    void (async () => {
+      try {
+        const result = await scanForDuplicates(
+          args.rootPaths,
+          (progress) => sendToRenderer('duplicate-scan-progress', { scanId, ...progress }),
+          () => token.cancelled
+        )
+        sendToRenderer('duplicate-scan-result', { scanId, ...result })
+      } catch (err) {
+        sendToRenderer('duplicate-scan-error', { scanId, message: String(err) })
+      } finally {
+        activeDuplicateScans.delete(scanId)
+      }
+    })()
+    return scanId
+  })
+
+  ipcMain.handle('cancel-duplicate-scan', (_event, scanId: string) => {
+    const token = activeDuplicateScans.get(scanId)
+    if (token) token.cancelled = true
+  })
+
+  // 重複チェックの結果一覧から、確認用に開く/フォルダで表示する/ごみ箱へ移動する(対象は共有フォルダ外の任意パスもありうる)
+  ipcMain.handle('reveal-path-in-explorer', (_event, absPath: string) => {
+    revealInFileManager(absPath)
+  })
+
+  ipcMain.handle('trash-path', async (_event, absPath: string) => {
+    try {
+      await shell.trashItem(absPath)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('get-lan-url', () => {
     const address = getLanAddress(settings.preferredNetworkInterface)
     return address && ownHttpPort ? `http://${address}:${ownHttpPort}/` : null
@@ -1194,6 +1290,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('open-settings-window', () => openSettingsWindow())
   ipcMain.handle('open-sync-window', () => openSyncWindow())
+  ipcMain.handle('open-duplicate-finder-window', () => openDuplicateFinderWindow())
   ipcMain.handle('open-chat-window', () => openChatWindow())
   ipcMain.handle('open-update-window', () => openUpdateWindow())
   ipcMain.handle('open-preview-window', (_event, source: { url: string; name: string } | null) =>

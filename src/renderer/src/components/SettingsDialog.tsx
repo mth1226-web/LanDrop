@@ -78,85 +78,93 @@ export default function SettingsDialog({
           <input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} />
         </label>
 
-        <div className="field">
-          <span>共有フォルダ（他のPCから見える・書き込める場所。複数設定できます）</span>
-          <ul className="shared-folder-list">
-            {settings.sharedFolders.length === 0 && <li className="empty-hint">共有フォルダが設定されていません</li>}
-            {settings.sharedFolders.map((folderPath) => {
-              const label = folderLabels.find((l) => l.path === folderPath)?.label
-              const hasShortcut = label ? (shortcutStatus[label] ?? false) : false
-              return (
-                <li key={folderPath} className="shared-folder-item">
-                  <span className="shared-folder-path" title={folderPath}>
-                    {folderPath}
-                  </span>
-                  <button className="button secondary small" onClick={() => onOpenFolder(folderPath)}>
-                    開く
-                  </button>
-                  {label && (
-                    <button
-                      className={hasShortcut ? 'button secondary small active' : 'button secondary small'}
-                      title="デスクトップに、このフォルダを直接開くショートカットを置く/外す(Windowsのみ)"
-                      onClick={() => void handleToggleShortcut(label, folderPath)}
-                    >
-                      {hasShortcut ? 'デスクトップに配置済み' : 'デスクトップにショートカット'}
-                    </button>
-                  )}
-                  <button className="button secondary small" onClick={() => onRemoveSharedFolder(folderPath)}>
-                    削除
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          <div
-            className={isDragOver ? 'shared-folder-dropzone drag-over' : 'shared-folder-dropzone'}
-            onDragOver={(e) => {
-              e.preventDefault()
-              if (!isInternalDragActive()) setIsDragOver(true)
-            }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={handleDrop}
-          >
-            <span>ここにフォルダをドラッグ&ドロップして追加</span>
-            <button className="button secondary small" onClick={onChooseSharedFolder}>
-              フォルダを選んで追加
-            </button>
+        <div className="settings-columns">
+          <div className="settings-folder-column">
+            <div className="field settings-folder-field">
+              <span>共有フォルダ（他のPCから見える・書き込める場所。複数設定できます）</span>
+              <ul className="shared-folder-list">
+                {settings.sharedFolders.length === 0 && <li className="empty-hint">共有フォルダが設定されていません</li>}
+                {settings.sharedFolders.map((folderPath) => {
+                  const label = folderLabels.find((l) => l.path === folderPath)?.label
+                  const hasShortcut = label ? (shortcutStatus[label] ?? false) : false
+                  return (
+                    <li key={folderPath} className="shared-folder-item">
+                      <span className="shared-folder-path" title={folderPath}>
+                        {folderPath}
+                      </span>
+                      <div className="shared-folder-actions">
+                        <button className="button secondary small" onClick={() => onOpenFolder(folderPath)}>
+                          開く
+                        </button>
+                        {label && (
+                          <button
+                            className={hasShortcut ? 'button secondary small active' : 'button secondary small'}
+                            title="デスクトップに、このフォルダを直接開くショートカットを置く/外す(Windowsのみ)"
+                            onClick={() => void handleToggleShortcut(label, folderPath)}
+                          >
+                            {hasShortcut ? 'デスクトップに配置済み' : 'デスクトップにショートカット'}
+                          </button>
+                        )}
+                        <button className="button secondary small" onClick={() => onRemoveSharedFolder(folderPath)}>
+                          削除
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+              <div
+                className={isDragOver ? 'shared-folder-dropzone drag-over' : 'shared-folder-dropzone'}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  if (!isInternalDragActive()) setIsDragOver(true)
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={handleDrop}
+              >
+                <span>ここにフォルダをドラッグ&ドロップして追加</span>
+                <button className="button secondary small" onClick={onChooseSharedFolder}>
+                  フォルダを選んで追加
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-main-column">
+            <label className="field">
+              <span>ダウンロード保存先（他のPCから取得したファイルの保存先）</span>
+              <div className="folder-row">
+                <input value={settings.downloadFolder} readOnly />
+                <button className="button secondary" onClick={onChooseDownloadFolder}>
+                  変更
+                </button>
+              </div>
+            </label>
+
+            <div className="field">
+              <span>自分のPCのフォルダ表示エリアの色</span>
+              <div className="accent-color-row">
+                {ACCENT_COLOR_PRESETS.map((color) => (
+                  <button
+                    key={color}
+                    className={color === settings.accentColor ? 'accent-swatch selected' : 'accent-swatch'}
+                    style={{ backgroundColor: color }}
+                    aria-label={color}
+                    onClick={() => onChangeAccentColor(color)}
+                  />
+                ))}
+                <input
+                  type="color"
+                  className="accent-color-picker"
+                  value={settings.accentColor}
+                  onChange={(e) => onChangeAccentColor(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <PhoneAccessCard />
           </div>
         </div>
-
-        <label className="field">
-          <span>ダウンロード保存先（他のPCから取得したファイルの保存先）</span>
-          <div className="folder-row">
-            <input value={settings.downloadFolder} readOnly />
-            <button className="button secondary" onClick={onChooseDownloadFolder}>
-              変更
-            </button>
-          </div>
-        </label>
-
-        <div className="field">
-          <span>自分のPCのフォルダ表示エリアの色</span>
-          <div className="accent-color-row">
-            {ACCENT_COLOR_PRESETS.map((color) => (
-              <button
-                key={color}
-                className={color === settings.accentColor ? 'accent-swatch selected' : 'accent-swatch'}
-                style={{ backgroundColor: color }}
-                aria-label={color}
-                onClick={() => onChangeAccentColor(color)}
-              />
-            ))}
-            <input
-              type="color"
-              className="accent-color-picker"
-              value={settings.accentColor}
-              onChange={(e) => onChangeAccentColor(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <PhoneAccessCard />
 
         <div className="modal-actions">
           <button className="button secondary" onClick={onClose}>

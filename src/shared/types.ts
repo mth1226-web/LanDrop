@@ -218,3 +218,66 @@ export interface PreviewSource {
   url: string
   name: string
 }
+
+/** 詳細モードの動画/音声解析結果。'unsupported'=対象外(画像・フォルダ等)、'error'=解析失敗 */
+export type MediaProbeStatus = 'ok' | 'unsupported' | 'error'
+
+export interface MediaInfo {
+  status: MediaProbeStatus
+  container: string | null
+  videoCodec: string | null
+  audioCodec: string | null
+  width: number | null
+  height: number | null
+  durationSec: number | null
+  fps: number | null
+  bitrateKbps: number | null
+}
+
+/** 重複ファイル/フォルダ検索の進捗フェーズ。walking=一覧作成中、hashing=サイズが被った候補のハッシュ計算中、comparing=グループ化中 */
+export type DuplicateScanPhase = 'walking' | 'hashing' | 'comparing'
+
+export interface DuplicateScanProgress {
+  phase: DuplicateScanPhase
+  filesWalked: number
+  filesToHash: number
+  filesHashed: number
+  currentPath: string
+}
+
+export interface DuplicateFileGroup {
+  id: string
+  size: number
+  paths: string[]
+}
+
+export interface DuplicateFolderGroup {
+  id: string
+  fileCount: number
+  totalSize: number
+  paths: string[]
+}
+
+/**
+ * 完全一致ではないが中身の大半が一致する「似ているフォルダ」のペア。
+ * 完全一致フォルダ(DuplicateFolderGroup)の1つ上の階層同士を比較して見つける
+ * (例: 別々のプロジェクトフォルダの中に、同じ構成のテンプレート/素材フォルダがコピーされている場合)
+ */
+export interface DuplicateSimilarFolderPair {
+  id: string
+  pathA: string
+  pathB: string
+  matchedFileCount: number
+  totalFileCountA: number
+  totalFileCountB: number
+  similarityPercent: number
+}
+
+export interface DuplicateScanResult {
+  rootPaths: string[]
+  folderGroups: DuplicateFolderGroup[]
+  fileGroups: DuplicateFileGroup[]
+  similarFolderPairs: DuplicateSimilarFolderPair[]
+  errorCount: number
+  cancelled: boolean
+}

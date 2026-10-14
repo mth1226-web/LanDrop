@@ -3,8 +3,11 @@ import type {
   AppSettings,
   BrowseEntry,
   ChatMessage,
+  DuplicateScanProgress,
+  DuplicateScanResult,
   EntryMetadata,
   EntryOpResult,
+  MediaInfo,
   NetworkInterfaceOption,
   PasteMode,
   Peer,
@@ -85,6 +88,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openSettingsWindow: (): Promise<void> => ipcRenderer.invoke('open-settings-window'),
   openSyncWindow: (): Promise<void> => ipcRenderer.invoke('open-sync-window'),
+  openDuplicateFinderWindow: (): Promise<void> => ipcRenderer.invoke('open-duplicate-finder-window'),
   openChatWindow: (): Promise<void> => ipcRenderer.invoke('open-chat-window'),
   openUpdateWindow: (): Promise<void> => ipcRenderer.invoke('open-update-window'),
   openPreviewWindow: (source: PreviewSource | null): Promise<void> => ipcRenderer.invoke('open-preview-window', source),
@@ -101,6 +105,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resolveAbsolutePath: (peerDeviceId: string, relPath: string): Promise<string | null> =>
     ipcRenderer.invoke('resolve-absolute-path', { peerDeviceId, relPath }),
   getOwnPreviewBaseUrl: (): Promise<string | null> => ipcRenderer.invoke('get-own-preview-base-url'),
+  getMediaInfo: (peerDeviceId: string, relPath: string): Promise<MediaInfo | null> =>
+    ipcRenderer.invoke('get-media-info', { peerDeviceId, relPath }),
+
+  chooseDuplicateScanFolder: (): Promise<string[] | null> => ipcRenderer.invoke('choose-duplicate-scan-folder'),
+  startDuplicateScan: (rootPaths: string[]): Promise<string> => ipcRenderer.invoke('start-duplicate-scan', { rootPaths }),
+  cancelDuplicateScan: (scanId: string): Promise<void> => ipcRenderer.invoke('cancel-duplicate-scan', scanId),
+  revealPathInExplorer: (absPath: string): Promise<void> => ipcRenderer.invoke('reveal-path-in-explorer', absPath),
+  trashPath: (absPath: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('trash-path', absPath),
   listNetworkInterfaces: (): Promise<NetworkInterfaceOption[]> => ipcRenderer.invoke('list-network-interfaces'),
   setPreferredNetworkInterface: (name: string | null): Promise<AppSettings> =>
     ipcRenderer.invoke('set-preferred-network-interface', name),
@@ -166,5 +178,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_: unknown, relPath: string): void => callback(relPath)
     ipcRenderer.on('open-folder-path', handler)
     return () => ipcRenderer.removeListener('open-folder-path', handler)
+  },
+  onDuplicateScanProgress: (callback: (payload: { scanId: string } & DuplicateScanProgress) => void) => {
+    const handler = (_: unknown, payload: { scanId: string } & DuplicateScanProgress): void => callback(payload)
+    ipcRenderer.on('duplicate-scan-progress', handler)
+    return () => ipcRenderer.removeListener('duplicate-scan-progress', handler)
+  },
+  onDuplicateScanResult: (callback: (payload: { scanId: string } & DuplicateScanResult) => void) => {
+    const handler = (_: unknown, payload: { scanId: string } & DuplicateScanResult): void => callback(payload)
+    ipcRenderer.on('duplicate-scan-result', handler)
+    return () => ipcRenderer.removeListener('duplicate-scan-result', handler)
+  },
+  onDuplicateScanError: (callback: (payload: { scanId: string; message: string }) => void) => {
+    const handler = (_: unknown, payload: { scanId: string; message: string }): void => callback(payload)
+    ipcRenderer.on('duplicate-scan-error', handler)
+    return () => ipcRenderer.removeListener('duplicate-scan-error', handler)
   }
 })

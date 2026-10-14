@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BrowseEntry, EntryMetadata, PasteMode, SortMode, ViewMode } from '../../../shared/types'
+import type { BrowseEntry, EntryMetadata, MediaInfo, PasteMode, SortMode, ViewMode } from '../../../shared/types'
 import { joinRelPath, parentRelPath, pathSegments } from '../store'
-import { formatBytes, formatDate, hexToRgba } from '../utils/format'
+import { formatBitrate, formatBytes, formatDate, formatDuration, hexToRgba } from '../utils/format'
 import { getPreviewKind } from '../utils/previewKind'
 import { splitFileName, fileTypeLabel } from '../utils/fileExtension'
 import { markInternalDragStart, markInternalDragEnd, isInternalDragActive } from '../utils/internalDrag'
@@ -39,6 +39,10 @@ const GRID_ICON_SIZE: Partial<Record<ViewMode, number>> = {
   mediumIcons: 56,
   tiles: 48
 }
+
+const THUMB_SIZE_MIN = 80
+const THUMB_SIZE_MAX = 400
+const THUMB_SIZE_STEP = 20
 
 const GRID_MIN_COLUMN: Partial<Record<ViewMode, number>> = {
   extraLargeIcons: 200,
@@ -145,6 +149,7 @@ export default function FolderBrowser({
   const [showHidden, setShowHidden] = useState(false)
   const [showMemoInline, setShowMemoInline] = useState(true)
   const [showThumbnails, setShowThumbnails] = useState(true)
+  const [thumbSize, setThumbSize] = useState(200)
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ name: string; after: boolean } | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -158,6 +163,8 @@ export default function FolderBrowser({
   const pendingSelectionRef = useRef<string | null>(null)
   // カラム表示の各列の幅(列のインデックス -> px)。未設定の列はデフォルト幅を使う
   const [columnWidths, setColumnWidths] = useState<Record<number, number>>({})
+  // 詳細モードの映像/音声情報欄用キャッシュ(キーは相手PC込みのフルパス)。'loading'は解析中を表す
+  const [mediaInfoCache, setMediaInfoCache] = useState<Record<string, MediaInfo | 'loading'>>({})
 
   const segments = pathSegments(currentPath)
   const isAtRoot = currentPath === ''
@@ -262,13 +269,13 @@ export default function FolderBrowser({
     e.target.value = ''
   }
 
-  function handleDragStartToOs(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+  function handleDragStartToOs(e: React.DragEvent<HTMLElement>, entry: BrowseEntry): void {
     e.preventDefault()
     markInternalDragStart()
     window.electronAPI.startDrag(joinRelPath(currentPath, entry.name))
   }
 
-  function handleEntryDragStart(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+  function handleEntryDragStart(e: React.DragEvent<HTMLElement>, entry: BrowseEntry): void {
     if (sortMode === 'manual') {
       e.dataTransfer.effectAllowed = 'move'
       markInternalDragStart()
@@ -278,7 +285,7 @@ export default function FolderBrowser({
     if (isSelf) handleDragStartToOs(e, entry)
   }
 
-  function handleReorderDragOver(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+  function handleReorderDragOver(e: React.DragEvent<HTMLElement>, entry: BrowseEntry): void {
     if (sortMode !== 'manual' || !draggedName || draggedName === entry.name) return
     e.preventDefault()
     e.stopPropagation()
@@ -287,7 +294,7 @@ export default function FolderBrowser({
     setDropTarget({ name: entry.name, after })
   }
 
-  function handleReorderDrop(e: React.DragEvent<HTMLLIElement>, entry: BrowseEntry): void {
+  function handleReorderDrop(e: React.DragEvent<HTMLElement>, entry: BrowseEntry): void {
     if (sortMode !== 'manual' || !draggedName) return
     e.preventDefault()
     e.stopPropagation()
@@ -445,6 +452,51 @@ export default function FolderBrowser({
       override: downloadFolderOverrides[entry.name]
     }
   })
+
+  // 詳細モードで動画/音声ファイルの映像・音声情報を非同期に解析する(自分の共有フォルダのみ。相手PCのファイルは実体が無いため対象外)。
+  // 同時実行数を絞ることで、動画が多いフォルダを開いたときに一斉解析が走るのを防ぐ
+  const MEDIA_PROBE_CONCURRENCY = 2
+  useEffect(() => {
+    if (viewMode !== 'details' || !isSelf) return
+    const targets = enrichedEntries
+      .filter(({ entry, kind }) => !entry.isDirectory && (kind === 'video' || kind === 'audio'))
+      .map(({ entry }) => joinRelPath(currentPath, entry.name))
+      .filter((key) => !(key in mediaInfoCache))
+    if (targets.length === 0) return
+    let cancelled = false
+    setMediaInfoCache((prev) => {
+      const next = { ...prev }
+      for (const key of targets) next[key] = 'loading'
+      return next
+    })
+    let nextIndex = 0
+    async function worker(): Promise<void> {
+      while (nextIndex < targets.length) {
+        const key = targets[nextIndex++]
+        const info = await window.electronAPI.getMediaInfo(peerDeviceId, key)
+        if (cancelled) return
+        setMediaInfoCache((prev) => ({
+          ...prev,
+          [key]: info ?? {
+            status: 'error',
+            container: null,
+            videoCodec: null,
+            audioCodec: null,
+            width: null,
+            height: null,
+            durationSec: null,
+            fps: null,
+            bitrateKbps: null
+          }
+        }))
+      }
+    }
+    void Promise.all(Array.from({ length: MEDIA_PROBE_CONCURRENCY }, () => worker()))
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, isSelf, peerDeviceId, currentPath, enrichedEntries, mediaInfoCache])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
@@ -691,6 +743,27 @@ export default function FolderBrowser({
           >
             {showThumbnails ? 'プレビューを隠す' : 'プレビューを表示'}
           </button>
+          {viewMode === 'details' && showThumbnails && (
+            <div className="thumb-size-control">
+              <button
+                className="button secondary small"
+                title="サムネイルを縮小"
+                disabled={thumbSize <= THUMB_SIZE_MIN}
+                onClick={() => setThumbSize((v) => Math.max(THUMB_SIZE_MIN, v - THUMB_SIZE_STEP))}
+              >
+                −
+              </button>
+              <span className="thumb-size-value">{thumbSize}px</span>
+              <button
+                className="button secondary small"
+                title="サムネイルを拡大"
+                disabled={thumbSize >= THUMB_SIZE_MAX}
+                onClick={() => setThumbSize((v) => Math.min(THUMB_SIZE_MAX, v + THUMB_SIZE_STEP))}
+              >
+                +
+              </button>
+            </div>
+          )}
           {/* 選択操作系のボタンは常に表示・固定ラベルにし、未選択時はdisabledにする。
               選択件数をラベルに含めると文字幅の変化でメニューの折り返しがガタつくため、件数は出さない */}
           {!isSelf && (
@@ -993,9 +1066,191 @@ export default function FolderBrowser({
               )
             })()}
         </div>
+      ) : viewMode === 'details' ? (
+        <div className="entry-table-wrap">
+          <table className="entry-table">
+            <thead>
+              <tr>
+                <th className="entry-table-checkbox-col" />
+                <th>状態</th>
+                <th>種類</th>
+                <th>ファイル名</th>
+                <th>拡張子</th>
+                <th>映像コーデック</th>
+                <th>解像度</th>
+                <th>総尺</th>
+                <th>容量</th>
+                <th>fps</th>
+                <th>ビットレート</th>
+                <th>音声コーデック</th>
+                <th className="entry-table-actions-col" />
+              </tr>
+            </thead>
+            <tbody>
+              {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor, nameBase, nameExt, typeLabel, override }) => {
+                const isMedia = !entry.isDirectory && (kind === 'video' || kind === 'audio')
+                const probe = isMedia && isSelf ? mediaInfoCache[joinRelPath(currentPath, entry.name)] : undefined
+                const info = probe && probe !== 'loading' ? probe : null
+                const statusText = !isMedia
+                  ? '－'
+                  : !isSelf
+                    ? '－'
+                    : probe === undefined || probe === 'loading'
+                      ? '解析中…'
+                      : probe.status === 'ok'
+                        ? 'OK'
+                        : probe.status === 'error'
+                          ? 'エラー'
+                          : '－'
+                return (
+                  <tr
+                    key={entry.name}
+                    data-entry-name={entry.name}
+                    className={[
+                      'entry-table-row',
+                      selectedNames.has(entry.name) ? 'entry-selected' : '',
+                      meta?.hidden ? 'entry-hidden' : '',
+                      dropTarget?.name === entry.name ? (dropTarget.after ? 'entry-drop-after' : 'entry-drop-before') : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    style={
+                      displayColor
+                        ? { backgroundColor: hexToRgba(displayColor, 0.18), borderLeft: `3px solid ${displayColor}` }
+                        : undefined
+                    }
+                    draggable={sortMode === 'manual' || isSelf}
+                    onDragStart={(e) => handleEntryDragStart(e, entry)}
+                    onDragOver={(e) => handleReorderDragOver(e, entry)}
+                    onDrop={(e) => handleReorderDrop(e, entry)}
+                    onDragEnd={handleEntryDragEnd}
+                    onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
+                  >
+                    <td className="entry-table-checkbox-col">
+                      <input
+                        type="checkbox"
+                        className="entry-checkbox"
+                        checked={selectedNames.has(entry.name)}
+                        onChange={() => toggleSelected(entry.name)}
+                      />
+                    </td>
+                    <td
+                      className="entry-table-status"
+                      title={isMedia && isSelf ? undefined : isMedia ? '相手PCのファイルは解析できません' : undefined}
+                    >
+                      {statusText}
+                    </td>
+                    <td>{typeLabel}</td>
+                    <td>
+                      <button
+                        className="entry-main"
+                        title="ダブルクリックで開く"
+                        onClick={(e) => {
+                          if (e.ctrlKey || e.metaKey) toggleSelected(entry.name)
+                          else setSelectedNames(new Set([entry.name]))
+                        }}
+                        onDoubleClick={() => {
+                          if (entry.isDirectory) onNavigate(joinRelPath(currentPath, entry.name))
+                          else if (kind) onPreviewEntry(entry)
+                        }}
+                      >
+                        {thumbUrl ? (
+                          <div className="entry-thumb" style={{ ['--thumb-size' as string]: `${thumbSize}px` }}>
+                            <img className="entry-thumb-media" src={thumbUrl} alt="" loading="lazy" />
+                          </div>
+                        ) : (
+                          <span className="entry-icon">{icon}</span>
+                        )}
+                        <span className={meta?.imported ? 'entry-name entry-imported' : 'entry-name'}>
+                          <span className="entry-name-base">{nameBase}</span>
+                          {nameExt && <span className="entry-name-ext">.{nameExt}</span>}
+                        </span>
+                        {showMemoInline && meta?.memo && (
+                          <span className="entry-memo-inline" title={meta.memo}>
+                            {meta.memo}
+                          </span>
+                        )}
+                        {meta?.imported && (
+                          <span className="entry-badge" title="取り込み済み">
+                            ✓
+                          </span>
+                        )}
+                        {meta?.memo && !showMemoInline && (
+                          <span className="entry-badge" title={meta.memo}>
+                            📝
+                          </span>
+                        )}
+                      </button>
+                    </td>
+                    <td>{nameExt || '－'}</td>
+                    <td>{info?.videoCodec ?? '－'}</td>
+                    <td>{info?.width && info?.height ? `${info.width}×${info.height}` : '－'}</td>
+                    <td>{info?.durationSec != null ? formatDuration(info.durationSec) : '－'}</td>
+                    <td>{!entry.isDirectory ? formatBytes(entry.size) : '－'}</td>
+                    <td>{info?.fps != null ? info.fps.toFixed(2) : '－'}</td>
+                    <td>{info?.bitrateKbps != null ? formatBitrate(info.bitrateKbps) : '－'}</td>
+                    <td>{info?.audioCodec ?? '－'}</td>
+                    <td className="entry-table-actions">
+                      {sortMode === 'manual' && (
+                        <span className="entry-reorder">
+                          <button
+                            className="button secondary small"
+                            title="上へ移動"
+                            onClick={() => onMoveEntry(entry.name, 'up')}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            className="button secondary small"
+                            title="下へ移動"
+                            onClick={() => onMoveEntry(entry.name, 'down')}
+                          >
+                            ↓
+                          </button>
+                        </span>
+                      )}
+                      {!isSelf && (
+                        <button className="button secondary small" onClick={() => onDownload([entry])}>
+                          ダウンロード
+                        </button>
+                      )}
+                      {!entry.isDirectory && isSelf && (
+                        <button className="button secondary small" onClick={() => onRevealLocal(entry)}>
+                          フォルダで表示
+                        </button>
+                      )}
+                      {isAtRoot &&
+                        (override ? (
+                          <button
+                            className="button secondary small"
+                            title={override}
+                            onClick={() => onRemoveDownloadFolderOverride(entry.name)}
+                          >
+                            保存先を解除
+                          </button>
+                        ) : (
+                          <button className="button secondary small" onClick={() => onSetDownloadFolderOverride(entry.name)}>
+                            保存先を設定
+                          </button>
+                        ))}
+                      <button className="button secondary small" onClick={() => setDetailsEntry(entry)}>
+                        詳細
+                      </button>
+                      {!isAtRoot && (
+                        <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
+                          名前変更
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <ul className="entry-list">
-          {enrichedEntries.map(({ entry, meta, kind, thumbUrl, icon, displayColor, nameBase, nameExt, typeLabel, override }) => (
+          {enrichedEntries.map(({ entry, meta, kind, icon, displayColor, nameBase, nameExt }) => (
             <li
               key={entry.name}
               data-entry-name={entry.name}
@@ -1020,11 +1275,6 @@ export default function FolderBrowser({
               onContextMenu={(e) => void handleEntryContextMenu(e, entry)}
             >
               <div className="entry-row">
-                {viewMode === 'details' && thumbUrl && (
-                  <div className="entry-thumb">
-                    <img className="entry-thumb-media" src={thumbUrl} alt="" loading="lazy" />
-                  </div>
-                )}
                 <input
                   type="checkbox"
                   className="entry-checkbox"
@@ -1063,64 +1313,9 @@ export default function FolderBrowser({
                       📝
                     </span>
                   )}
-                  {viewMode === 'details' && <span className="entry-type">{typeLabel}</span>}
                   {!entry.isDirectory && <span className="entry-size">{formatBytes(entry.size)}</span>}
                   {viewMode === 'content' && <span className="entry-date">{formatDate(entry.modifiedAt)}</span>}
                 </button>
-                {viewMode === 'details' && (
-                  <div className="entry-actions">
-                    {sortMode === 'manual' && (
-                      <span className="entry-reorder">
-                        <button
-                          className="button secondary small"
-                          title="上へ移動"
-                          onClick={() => onMoveEntry(entry.name, 'up')}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          className="button secondary small"
-                          title="下へ移動"
-                          onClick={() => onMoveEntry(entry.name, 'down')}
-                        >
-                          ↓
-                        </button>
-                      </span>
-                    )}
-                    {!isSelf && (
-                      <button className="button secondary small" onClick={() => onDownload([entry])}>
-                        ダウンロード
-                      </button>
-                    )}
-                    {!entry.isDirectory && isSelf && (
-                      <button className="button secondary small" onClick={() => onRevealLocal(entry)}>
-                        フォルダで表示
-                      </button>
-                    )}
-                    {isAtRoot &&
-                      (override ? (
-                        <button
-                          className="button secondary small"
-                          title={override}
-                          onClick={() => onRemoveDownloadFolderOverride(entry.name)}
-                        >
-                          保存先を解除
-                        </button>
-                      ) : (
-                        <button className="button secondary small" onClick={() => onSetDownloadFolderOverride(entry.name)}>
-                          保存先を設定
-                        </button>
-                      ))}
-                    <button className="button secondary small" onClick={() => setDetailsEntry(entry)}>
-                      詳細
-                    </button>
-                    {!isAtRoot && (
-                      <button className="button secondary small" onClick={() => setRenamingEntry(entry)}>
-                        名前変更
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </li>
           ))}

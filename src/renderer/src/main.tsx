@@ -7,6 +7,7 @@ import ChatWindowApp from './windows/ChatWindowApp'
 import UpdateWindowApp from './windows/UpdateWindowApp'
 import PreviewWindowApp from './windows/PreviewWindowApp'
 import BrowseWindowApp from './windows/BrowseWindowApp'
+import DuplicateFinderWindowApp from './windows/DuplicateFinderWindowApp'
 import './App.css'
 
 const rawRoute = window.location.hash.replace(/^#/, '')
@@ -18,6 +19,8 @@ function RootByRoute(): JSX.Element {
       return <SettingsWindowApp />
     case 'sync':
       return <SyncWindowApp />
+    case 'duplicates':
+      return <DuplicateFinderWindowApp />
     case 'chat':
       return <ChatWindowApp />
     case 'update':

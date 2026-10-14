@@ -18,6 +18,23 @@ export function formatDate(timestampMs: number): string {
   })
 }
 
+/** 秒数を "mm:ss" または "h:mm:ss" 形式にする(詳細モードの総尺欄用) */
+export function formatDuration(seconds: number): string {
+  const total = Math.round(seconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+  const ss = String(s).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
+/** kbps単位のビットレートを見やすい文字列にする(詳細モードのビットレート欄用) */
+export function formatBitrate(kbps: number): string {
+  if (kbps >= 1000) return `${(kbps / 1000).toFixed(2)} Mbps`
+  return `${Math.round(kbps)} kbps`
+}
+
 const STATUS_LABELS: Record<ActivityStatus, string> = {
   in_progress: '転送中',
   completed: '完了',

@@ -47,6 +47,7 @@
     "bplist-parser": "^0.3.2",
     "extract-zip": "^2.0.1",
     "immer": "^10.1.1",
+    "music-metadata": "^11.15.0",
     "qrcode": "^1.5.4",
     "zustand": "^4.5.4"
   },
